@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "darr.h"
 
 typedef struct str8 {
 	char* data;
@@ -19,19 +20,21 @@ typedef struct str8_node {
 typedef struct str8_map {
 	str8_node* list;
 	size_t length;
+
+	str8_node* pool;
 } str8_map;
 
 size_t str8_hash(str8 key) {
-	size_t val = 0;
+	size_t result = 0;
 
 	for (int i = 0; i < key.length; i++) {
-		val += key.data[i] << 1;
+		result += key.data[i] << 1;
 	}
 
-	return val;
+	return result;
 }
 
-#define STR8_MAP_MIN 8
+#define STR8_MAP_MIN 16
 
 str8_map new_str8_map(size_t length) {
 	if (length < STR8_MAP_MIN) {
@@ -42,6 +45,7 @@ str8_map new_str8_map(size_t length) {
 		.list = calloc(length, sizeof(str8_node)),
 		.length = length,
 	};
+	darr_new(result.pool, str8_node, length/2);
 
 	return result;
 }
@@ -58,11 +62,13 @@ void push_str8_map(str8_map* map, str8 key, str8 val) {
 		while (dest->next) {
 			dest = dest->next;
 		}
-		dest->next = malloc(sizeof(str8_node));
-		*(dest->next) = (str8_node){
+
+		str8_node node = (str8_node){
 			.key = key,
-			.val = val,
+			.val = val
 		};
+		darr_push(map->pool, node);
+		dest->next = map->pool + darr_len(map->pool)-1;
 	}
 }
 
