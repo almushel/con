@@ -6,10 +6,8 @@
 
 #include "darr.h"
 
-typedef struct str8 {
-	char* data;
-	size_t length;
-} str8;
+#include "str8.c"
+
 
 typedef struct str8_node {
 	str8 key, val;
@@ -82,6 +80,8 @@ str8 read_all(char* filename) {
 
 	FILE* fstream = fopen(filename, "r");
 
+	if (!fstream) goto cleanup;
+
 	size_t bytes_read = 0;
 	while ((bytes_read = fread(buf, 1, sizeof(buf), fstream)) > 0){
 		if (used + bytes_read > result.length) {
@@ -99,17 +99,11 @@ str8 read_all(char* filename) {
 		used += bytes_read;
 	}
 
-	if (!feof(fstream) && ferror(fstream)) {
-		perror("(read_all) fread");
-		free(result.data);
+	fclose(fstream);
 
-		result.data = 0;
-		result.length = 0;
+	if (!feof(fstream) && ferror(fstream)) { goto cleanup; }
 
-		return result;
-	}
-
-	if (used != result.length) {
+	if (used < result.length) {
 		char* new_result = realloc(result.data, used);
 		if (new_result) {
 			result.data = new_result;
@@ -117,19 +111,26 @@ str8 read_all(char* filename) {
 		}
 	}
 
-	fclose(fstream);
-
 	return result;
+
+	cleanup:
+		perror("(read_all) fread");
+		free(result.data);
+
+		result.data = 0;
+		result.length = 0;
+
+		return result;
 }
 
-bool validate_json(char* contents, size_t length) {
+bool validate_json_object(char* contents, size_t length) {
 	if (	(contents == 0) || (length == 0) )  {
-		fprintf(stderr, "invalid json: empty file\n");
+		fprintf(stderr, "invalid json: empty\n");
 		return false;
 	}
 
 	// TODO: Verify that characters being skipped are whitespace
-	size_t start = 0, end = length-1;
+	size_t start = 0, end = length;
 	while (contents[start] != '{' && start < end) start++;
 	while (contents[end] != '}' && end > start) end--;
 
@@ -141,46 +142,28 @@ bool validate_json(char* contents, size_t length) {
 	return true;
 }
 
-str8_map parse_json_object(char* contents, size_t length) {
+str8_map parse_json_object(char* contents, size_t length) {	
+	assert(contents[0] == '{');
+	assert(contents[length-1] == '}');
+
 	size_t colons = 0;
 	for (int c = 0; c < length; c++) {
 		if (contents[c] == ',') colons++;	
 	}
 
 	str8_map result = new_str8_map(colons);
+	str8 cs = str8_trim(
+			(str8){.data = contents, .length = length},
+			(str8){.data = "{}", .length = 2}
+		);
+	str8* lines = str8_split(cs, ',');
 
-	str8 key = {}, val = {};
-	for (int c = 0; c < length; c++) {
-		if (contents[c] == '"') { 
-			int start = c+1;
-			int i = start;
-			while (i < length) {
-				if (contents[i] == '"') { 
-					contents[i] = '\0';
-					break;
-				}
-				i++;
-			}
-
-			if (key.length == 0) {
-				key = (str8) {
-					.data = contents+start,
-					.length = i-start,
-				};
-			} else {
-				val = (str8) {
-					.data = contents+start,
-					.length = i-start,
-				};
-			}
-
-			if (key.length && val.length) {
-				push_str8_map(&result, key, val);
-				key = (str8){};
-				val = (str8){};
-			}
-
-			c = i;
+	str8 vals[2];
+	for (int i = 0; i < darr_len(lines); i++) {
+		//printf("line: %s\n---\n", lines[i].data);
+		str8_cut(lines[i], ':', vals);
+		if (vals[0].length && vals[1].length) {
+			push_str8_map(&result, str8_trim_space(vals[0]), str8_trim_space(vals[1]));
 		}
 	}
 	
@@ -194,26 +177,19 @@ int main(int argc, char** argv) {
 	}
 
 	str8 contents = read_all(argv[1]);
-	if (!validate_json(contents.data, contents.length)) {
+	if (!validate_json_object(contents.data, contents.length)) {
 		fprintf(stderr, "%s\n", contents.data);
 		return 1;
 	}
 
-	size_t start = 0, end = contents.length-1;
-	while (contents.data[start] != '{' && start < end) start++;
-	while (contents.data[end] != '}' && end > start) end--;
-
-	str8_map result = {};
-	if (start < end) {
-		result = parse_json_object(contents.data+start, contents.length+(end-start));
-	}
+	str8_map result = parse_json_object(contents.data, contents.length);
 
 	printf("{\n");
 	const char* indent = "    ";
 	for (int i = 0; i < result.length; i++) {
 		str8_node* node = result.list + i;
 		while (node && node->key.length) {
-			printf("%s%s: %s\n", indent, node->key.data, node->val.data);
+			printf("%s%s : %s\n", indent, node->key.data, node->val.data);
 			node = node->next;
 		}
 	}
