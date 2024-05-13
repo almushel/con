@@ -53,7 +53,6 @@ bool str8_contains(str8 s, int c) {
 	return false;
 }
 
-// NOTE: Do I want to copy or split in place?
 str8* str8_split(str8 s, int delim) {
 	str8* result = darr_new(str8, 8);
 
@@ -65,7 +64,9 @@ str8* str8_split(str8 s, int delim) {
 		}
 	}
 
-	if (start < c) {
+	if (darr_len(result) == 0) {
+		darr_push(result, s);
+	} else if (start < c) {
 		darr_push(result, new_str8(s.data+start, c-start));
 	}
 
@@ -79,17 +80,17 @@ str8* str8_cut(str8 s, int sep, str8 result[2]) {
 	for (int i = 0; i < s.length; i++) {
 		if (s.data[i] == sep) {
 			result[0] = new_str8(s.data, i);
-			result[1] = new_str8(s.data+i+1, s.length-i);
+			result[1] = new_str8(s.data+i+1, s.length-i-1);
 		};
 	}
 
 	return result;
 }
 
-str8 str8_trim_space(str8 s) {
+str8 str8_trim_space(str8 s, bool inplace) {
 	int start = 0, end = s.length-1;
 
-	while(isspace(s.data[start]) && start < s.length) {
+	while(isspace(s.data[start]) && start < end) {
 		start++;
 	}
 
@@ -99,16 +100,19 @@ str8 str8_trim_space(str8 s) {
 
 	str8 result = {};
 	if (start < end) {
-		result = new_str8(s.data+start, (end-start)+1);
+		result = inplace
+			? (str8){.data = s.data+start, .length = (end-start)+1}
+			: new_str8(s.data+start, (end-start)+1);
+		result.data[result.length] = '\0';
 	}
 
 	return result;
 }
 
-str8 str8_trim(str8 s, str8 cutset) {
+str8 str8_trim(str8 s, str8 cutset, bool inplace) {
 	int start = 0, end = s.length-1;
 
-	while (str8_contains(cutset, s.data[start]) && start < s.length) {
+	while (str8_contains(cutset, s.data[start]) && start < end) {
 		start++;
 	}
 
@@ -118,8 +122,11 @@ str8 str8_trim(str8 s, str8 cutset) {
 
 	str8 result = {};
 	if (start < end) {
-		result = new_str8(s.data+start, end-start);
+		result = inplace
+			? (str8){.data = s.data+start, .length = (end-start)+1}
+			: new_str8(s.data+start, (end-start)+1);
+		result.data[result.length] = '\0';
 	}
 
-	return result;	
+	return result;
 }

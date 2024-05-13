@@ -14,7 +14,8 @@ enum json_types {
 	JSON_NUM,
 	JSON_STRING,
 	JSON_BOOL,
-	JSON_OBJ
+	JSON_OBJ,
+	JSON_ARR
 };
 
 struct json_node;
@@ -40,6 +41,33 @@ typedef struct json_node {
 
 	struct json_node* next;
 } json_node;
+
+str8 read_all(char* filename) {
+	char buf[1024];
+	char* data = darr_new(char, sizeof(buf));
+	str8 result = {};
+
+	FILE* fstream = fopen(filename, "r");
+	if (!fstream) {
+		perror("(read_all) fread");
+		goto cleanup;
+	}
+
+	size_t bytes_read = 0;
+	while ((bytes_read = fread(buf, 1, sizeof(buf), fstream)) > 0){
+		darr_push_arr(data, buf, bytes_read);
+	}
+
+	if (feof(fstream) && !ferror(fstream)) {
+		result = new_str8(data, darr_len(data));
+	}
+
+	fclose(fstream);
+
+	cleanup:
+		darr_free(data);
+		return result;
+}
 
 size_t str8_hash(str8 key) {
 	size_t result = 0;
@@ -67,79 +95,57 @@ json_obj new_json_obj(size_t length) {
 	return result;
 }
 
-void push_str8_map(json_obj* map, str8 key, json_val val) {
+void push_json_prop(json_obj* map, str8 key, json_node prop) {
 	size_t index = str8_hash(key) % map->length;
 	assert(index < map->length);
 
 	json_node* dest = map->props + index;
 	if (dest->key.length == 0 || strcmp(dest->key.data, key.data) == 0) {
 		dest->key = key;
-		dest->val = val;
+		dest->type = prop.type;
+		dest->val = prop.val;
 	} else {
 		while (dest->next) {
 			dest = dest->next;
 		}
 
-		json_node node = (json_node){
-			.key = key,
-			.val = val
-		};
-		darr_push(map->pool, node);
+		darr_push(map->pool, prop);
 		dest->next = map->pool + darr_len(map->pool)-1;
 	}
 }
 
-str8 read_all(char* filename) {
-	char buf[1024];
-	str8 result = (str8){
-		.data = malloc(sizeof(buf)),
-		.length = sizeof(buf),
-	};
-	int used = 0;
+str8 json_prop_to_str8(json_node prop) {
+	str8 result;
+	switch (prop.type) {
+		case JSON_NULL: {
+			result.data = "null";
+			result.length = 4;
+		} break;
 
-	FILE* fstream = fopen(filename, "r");
+		case JSON_BOOL: {
+			result.data = prop.val.boolean ? "true" : "false";
+			result.length = 4 + (size_t)(!prop.val.boolean);
+		} break;
 
-	if (!fstream) goto cleanup;
+		case JSON_STRING: {
+			result = new_str8("", prop.val.string.length+2);
+			result.data[0] = '\"';
+			memcpy(result.data+1, prop.val.string.data, prop.val.string.length);
+			result.data[result.length-1] = '\"';
+		} break;
 
-	size_t bytes_read = 0;
-	while ((bytes_read = fread(buf, 1, sizeof(buf), fstream)) > 0){
-		if (used + bytes_read > result.length) {
-			char* new_result = realloc(result.data, result.length * 2);
-			if (new_result) {
-				result.data = new_result;
-				result.length *= 2;
-			} else {
-				fprintf(stderr, "failed to realloc result\n");
-				return result;
+		case JSON_NUM: {
+			int len = snprintf(0,0, "%f", prop.val.number);
+			if (len) {
+				result = new_str8("", len);	
+				snprintf(result.data,result.length+1, "%f", prop.val.number);
 			}
-		}
+		} break;
 
-		memcpy(result.data+used, buf, bytes_read);
-		used += bytes_read;
-	}
-
-	fclose(fstream);
-
-	if (!feof(fstream) && ferror(fstream)) { goto cleanup; }
-
-	if (used < result.length) {
-		char* new_result = realloc(result.data, used);
-		if (new_result) {
-			result.data = new_result;
-			result.length = used;
-		}
+		default: {} break;
 	}
 
 	return result;
-
-	cleanup:
-		perror("(read_all) fread");
-		free(result.data);
-
-		result.data = 0;
-		result.length = 0;
-
-		return result;
 }
 
 bool validate_json_object(char* contents, size_t length) {
@@ -164,6 +170,7 @@ bool validate_json_object(char* contents, size_t length) {
 json_obj parse_json_object(char* contents, size_t length) {	
 	assert(contents[0] == '{');
 	assert(contents[length-1] == '}');
+	assert(contents[length] == '\0');
 
 	size_t colons = 0;
 	for (int c = 0; c < length; c++) {
@@ -173,19 +180,48 @@ json_obj parse_json_object(char* contents, size_t length) {
 	json_obj result = new_json_obj(colons);
 	str8 cs = str8_trim(
 			(str8){.data = contents, .length = length},
-			(str8){.data = "{}", .length = 2}
+			(str8){.data = "{}", .length = 2},
+			true
 		);
 	str8* lines = str8_split(cs, ',');
 
 	str8 vals[2];
 	for (int i = 0; i < darr_len(lines); i++) {
-		//printf("line: %s\n---\n", lines[i].data);
 		str8_cut(lines[i], ':', vals);
-		if (vals[0].length && vals[1].length) {
-			str8 key = str8_trim_space(vals[0]);
-			json_val val = { .string = str8_trim_space(vals[1]) };
 
-			push_str8_map(&result, key, val);
+		if (vals[0].length && vals[1].length) {
+			str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, false);
+			str8 valstr = str8_trim_space(vals[1], true);
+			json_node prop = {.key = key};
+			double num_val = 0;
+			
+			if (valstr.data[0] == '\"' && valstr.data[valstr.length-1] == '\"') {
+				printf("string\n");
+				prop.type = JSON_STRING;
+				prop.val.string = str8_trim(valstr, (str8){.data = "\"", .length = 1}, false);
+			} else if (strcmp(valstr.data, "true") == 0){
+				printf("bool\n");
+				prop.type = JSON_BOOL;
+				prop.val.boolean = true;
+			} else if (strcmp(valstr.data, "false") == 0 ){
+				printf("bool\n");
+				prop.type = JSON_BOOL;
+				prop.val.boolean = false;
+			} else if ( (num_val = strtod(valstr.data, 0)) ){
+				printf("num\n");
+				prop.type = JSON_NUM;
+				prop.val.number = num_val;
+			} else if (valstr.data[0] == '{' && valstr.data[valstr.length-1] == '}'){
+				printf("obj\n");
+				prop.type = JSON_STRING; // JSON_OBJ;
+				prop.val.string = valstr;
+			} else if (valstr.data[0] == '[' && valstr.data[valstr.length-1] == ']'){
+				printf("arr\n");
+				prop.type = JSON_STRING; // JSON_ARR;
+				prop.val.string = valstr;
+			}
+
+			push_json_prop(&result, key, prop);
 		}
 	}
 	
@@ -198,7 +234,7 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	str8 contents = read_all(argv[1]);
+	str8 contents = str8_trim_space(read_all(argv[1]), true);
 	if (!validate_json_object(contents.data, contents.length)) {
 		fprintf(stderr, "%s\n", contents.data);
 		return 1;
@@ -211,7 +247,7 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < result.length; i++) {
 		json_node* node = result.props + i;
 		while (node && node->key.length) {
-			printf("%s%s : %s\n", indent, node->key.data, node->val.string.data);
+			printf("%s\"%s\" : %s\n", indent, node->key.data, json_prop_to_str8(*node).data);
 			node = node->next;
 		}
 	}
