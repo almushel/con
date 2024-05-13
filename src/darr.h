@@ -8,21 +8,29 @@
 
 //NOTE: Probably trying to be too clever here!
 
-#define darr_head(arr) ((size_t*)arr - 2)
-#define darr_free(arr) free(darr_head(arr))
-#define darr_len(arr) *((size_t*)arr - 1)
-#define darr_cap(arr) *(darr_head(arr))
+typedef struct {
+	size_t capacity, length;
+} darr_header;
 
-#define darr_new(arr, type, cap) {\
-	arr = (type*)( (size_t*)malloc(sizeof(type)*cap + sizeof(size_t)*2) + 2 );\
-	darr_cap(arr) = cap;\
-	darr_len(arr) = 0;\
+#define darr_head(arr) ((darr_header*)arr - 1)
+#define darr_free(arr) free(darr_head(arr))
+#define darr_len(arr) darr_head(arr)->length
+#define darr_cap(arr) darr_head(arr)->capacity
+
+static inline void* darr_alloc(size_t size, size_t cap) {
+	darr_header* result = (darr_header*)malloc(size*cap + sizeof(darr_header));
+	result->capacity = cap;
+	result->length = 0;
+
+	return (void*)(result+1);
 }
 
+#define darr_new(type, cap) darr_alloc(sizeof(type), cap)
+
 #define darr_resize(arr, new_cap) {\
-	size_t* new_head = realloc(darr_head(arr), sizeof(arr[0])*new_cap + sizeof(size_t)*2);\
+	darr_header* new_head = realloc(darr_head(arr), sizeof(arr[0])*new_cap + sizeof(darr_header));\
 	assert(new_head);\
-	arr = (void*)(new_head+2);\
+	arr = (void*)(new_head+1);\
 	darr_cap(arr) = new_cap;\
 }
 

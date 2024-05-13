@@ -9,18 +9,37 @@
 #include "str8.c"
 
 
-typedef struct str8_node {
-	str8 key, val;
+enum json_types {
+	JSON_NULL = 0,
+	JSON_NUM,
+	JSON_STRING,
+	JSON_BOOL,
+	JSON_OBJ
+};
 
-	struct str8_node* next;
-} str8_node;
+struct json_node;
 
-typedef struct str8_map {
-	str8_node* list;
+typedef struct json_obj {
+	struct json_node* props;
 	size_t length;
 
-	str8_node* pool;
-} str8_map;
+	struct json_node* pool;
+} json_obj;
+
+typedef union {
+	str8 string;
+	double number;
+	bool boolean;
+	void* object;
+} json_val;
+
+typedef struct json_node {
+	enum json_types type;
+	str8 key;
+	json_val val;
+
+	struct json_node* next;
+} json_node;
 
 size_t str8_hash(str8 key) {
 	size_t result = 0;
@@ -32,27 +51,27 @@ size_t str8_hash(str8 key) {
 	return result;
 }
 
-#define STR8_MAP_MIN 16
+#define STR8_OBJ_MIN 8
 
-str8_map new_str8_map(size_t length) {
-	if (length < STR8_MAP_MIN) {
-		length = STR8_MAP_MIN;
+json_obj new_json_obj(size_t length) {
+	if (length < STR8_OBJ_MIN) {
+		length = STR8_OBJ_MIN;
 	}
 
-	str8_map result = (str8_map) {
-		.list = calloc(length, sizeof(str8_node)),
+	json_obj result = (json_obj) {
+		.props = calloc(length, sizeof(json_node)),
 		.length = length,
+		.pool = darr_new(json_node, length/2)
 	};
-	darr_new(result.pool, str8_node, length/2);
 
 	return result;
 }
 
-void push_str8_map(str8_map* map, str8 key, str8 val) {
+void push_str8_map(json_obj* map, str8 key, json_val val) {
 	size_t index = str8_hash(key) % map->length;
 	assert(index < map->length);
 
-	str8_node* dest = map->list + index;
+	json_node* dest = map->props + index;
 	if (dest->key.length == 0 || strcmp(dest->key.data, key.data) == 0) {
 		dest->key = key;
 		dest->val = val;
@@ -61,7 +80,7 @@ void push_str8_map(str8_map* map, str8 key, str8 val) {
 			dest = dest->next;
 		}
 
-		str8_node node = (str8_node){
+		json_node node = (json_node){
 			.key = key,
 			.val = val
 		};
@@ -142,7 +161,7 @@ bool validate_json_object(char* contents, size_t length) {
 	return true;
 }
 
-str8_map parse_json_object(char* contents, size_t length) {	
+json_obj parse_json_object(char* contents, size_t length) {	
 	assert(contents[0] == '{');
 	assert(contents[length-1] == '}');
 
@@ -151,7 +170,7 @@ str8_map parse_json_object(char* contents, size_t length) {
 		if (contents[c] == ',') colons++;	
 	}
 
-	str8_map result = new_str8_map(colons);
+	json_obj result = new_json_obj(colons);
 	str8 cs = str8_trim(
 			(str8){.data = contents, .length = length},
 			(str8){.data = "{}", .length = 2}
@@ -163,7 +182,10 @@ str8_map parse_json_object(char* contents, size_t length) {
 		//printf("line: %s\n---\n", lines[i].data);
 		str8_cut(lines[i], ':', vals);
 		if (vals[0].length && vals[1].length) {
-			push_str8_map(&result, str8_trim_space(vals[0]), str8_trim_space(vals[1]));
+			str8 key = str8_trim_space(vals[0]);
+			json_val val = { .string = str8_trim_space(vals[1]) };
+
+			push_str8_map(&result, key, val);
 		}
 	}
 	
@@ -182,14 +204,14 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	str8_map result = parse_json_object(contents.data, contents.length);
+	json_obj result = parse_json_object(contents.data, contents.length);
 
 	printf("{\n");
 	const char* indent = "    ";
 	for (int i = 0; i < result.length; i++) {
-		str8_node* node = result.list + i;
+		json_node* node = result.props + i;
 		while (node && node->key.length) {
-			printf("%s%s : %s\n", indent, node->key.data, node->val.data);
+			printf("%s%s : %s\n", indent, node->key.data, node->val.string.data);
 			node = node->next;
 		}
 	}

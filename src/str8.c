@@ -22,7 +22,7 @@ void str8_free_pool() {
 
 str8 new_str8(const char* data, size_t length) {
 	if (pool == 0) {
-		darr_new(pool, char, POOL_MIN_SIZE);
+		pool = darr_new(char, POOL_MIN_SIZE);
 	}
 
 	int start = darr_len(pool);
@@ -55,8 +55,7 @@ bool str8_contains(str8 s, int c) {
 
 // NOTE: Do I want to copy or split in place?
 str8* str8_split(str8 s, int delim) {
-	str8* result;
-	darr_new(result, str8, 8);
+	str8* result = darr_new(str8, 8);
 
 	int start = 0, c = 0;
 	for (; c < s.length; c++) {
