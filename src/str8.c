@@ -4,11 +4,7 @@
 #include <stddef.h>
 
 #include "darr.h"
-
-typedef struct str8 {
-	char* data;
-	size_t length;
-} str8;
+#include "str8.h"
 
 #define POOL_MIN_SIZE 256
 
