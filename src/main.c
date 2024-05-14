@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
 		json_prop_to_str8(
 			(json_node) {
 				.key = (str8){.data = argv[1], .length = strlen(argv[1])},
-				.type = JSON_OBJ,
+				.val.type = JSON_OBJ,
 				.val.object = parse_json_object(contents.data, contents.length),
 		},0).data
 	);
