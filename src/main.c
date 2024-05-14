@@ -31,7 +31,7 @@ typedef union {
 	str8 string;
 	double number;
 	bool boolean;
-	void* object;
+	json_obj object;
 } json_val;
 
 typedef struct json_node {
@@ -114,17 +114,35 @@ void push_json_prop(json_obj* map, str8 key, json_node prop) {
 	}
 }
 
-str8 json_prop_to_str8(json_node prop) {
-	str8 result;
+#define INDENT_SIZE 4
+
+str8 json_prop_to_str8(json_node prop, int indent) {
+	str8 result = {};
+
+	int key_offset = indent*INDENT_SIZE;
+	str8 key = new_str8("", (key_offset) + (prop.key.length+4));
+	memset(key.data, ' ', key_offset);
+
+	key.data[key_offset] = '\"';
+	memcpy(key.data+(key_offset+1), prop.key.data, prop.key.length);
+	key.data[key.length-3] = '\"';
+	key.data[key.length-2] = ':';
+	key.data[key.length-1] = ' ';
+
 	switch (prop.type) {
 		case JSON_NULL: {
-			result.data = "null";
-			result.length = 4;
+			result = str8_concat(key, (str8){.data="null",.length=4});
 		} break;
 
 		case JSON_BOOL: {
-			result.data = prop.val.boolean ? "true" : "false";
-			result.length = 4 + (size_t)(!prop.val.boolean);
+			result = str8_concat(
+				key,
+				(str8) {
+					.data = prop.val.boolean ? "true" : "false",
+					.length = 4 + (size_t)(!prop.val.boolean),
+				}
+			);
+				
 		} break;
 
 		case JSON_STRING: {
@@ -132,15 +150,39 @@ str8 json_prop_to_str8(json_node prop) {
 			result.data[0] = '\"';
 			memcpy(result.data+1, prop.val.string.data, prop.val.string.length);
 			result.data[result.length-1] = '\"';
+
+			result = str8_concat(key, result);
 		} break;
 
 		case JSON_NUM: {
 			int len = snprintf(0,0, "%f", prop.val.number);
 			if (len) {
 				result = new_str8("", len);	
-				snprintf(result.data,result.length+1, "%f", prop.val.number);
+				snprintf(result.data, result.length+1, "%f", prop.val.number);
 			}
+			result = str8_concat(key, result);
 		} break;
+
+		case JSON_OBJ: {
+			result = (str8){.data = "{", .length = 1};
+			for (int i = 0; i < prop.val.object.length; i++) {
+				if (prop.val.object.props[i].key.length) {
+					result = str8_concat(result, (str8){.data="\n", .length = 1});
+					result = str8_concat(
+						result,
+						json_prop_to_str8(prop.val.object.props[i], indent+1)
+					);
+				}
+			}
+
+			str8 bracket = new_str8("", (indent*INDENT_SIZE)+2);
+			bracket.data[0] ='\n';
+			memset(bracket.data+1, ' ', indent*INDENT_SIZE);
+			bracket.data[bracket.length-1] = '}';
+			
+			result = str8_concat(result, bracket);
+			result = str8_concat(key, result);
+		}
 
 		default: {} break;
 	}
@@ -172,58 +214,67 @@ json_obj parse_json_object(char* contents, size_t length) {
 	assert(contents[length-1] == '}');
 	assert(contents[length] == '\0');
 
-	size_t colons = 0;
-	for (int c = 0; c < length; c++) {
-		if (contents[c] == ',') colons++;	
-	}
-
-	json_obj result = new_json_obj(colons);
+	json_obj result = new_json_obj(16);
 	str8 cs = str8_trim(
 			(str8){.data = contents, .length = length},
 			(str8){.data = "{}", .length = 2},
 			true
-		);
-	str8* lines = str8_split(cs, ',');
+	);
 
+	int start = 0;
 	str8 vals[2];
-	for (int i = 0; i < darr_len(lines); i++) {
-		str8_cut(lines[i], ':', vals);
-
-		if (vals[0].length && vals[1].length) {
+	for (int i = 0; i < cs.length; i++) {
+		if (cs.data[i] == '{') {
+			int end = i+1;
+			for (;end < cs.length;end++) {
+				if (cs.data[end] == '}') break;
+	 		}
+				
+			str8_cut((str8) {.data = cs.data+start, .length = end-start+1}, ':', vals);
 			str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, false);
-			str8 valstr = str8_trim_space(vals[1], true);
-			json_node prop = {.key = key};
-			double num_val = 0;
+			str8 objstr = str8_trim_space(vals[1], false);
+
+			json_node prop = {
+				.key = key,
+				.type = JSON_OBJ,
+				.val.object = parse_json_object(objstr.data, objstr.length),
+			};
+			push_json_prop(&result, key, prop);
 			
-			if (valstr.data[0] == '\"' && valstr.data[valstr.length-1] == '\"') {
-				printf("string\n");
-				prop.type = JSON_STRING;
-				prop.val.string = str8_trim(valstr, (str8){.data = "\"", .length = 1}, false);
-			} else if (strcmp(valstr.data, "true") == 0){
-				printf("bool\n");
-				prop.type = JSON_BOOL;
-				prop.val.boolean = true;
-			} else if (strcmp(valstr.data, "false") == 0 ){
-				printf("bool\n");
-				prop.type = JSON_BOOL;
-				prop.val.boolean = false;
-			} else if ( (num_val = strtod(valstr.data, 0)) ){
-				printf("num\n");
-				prop.type = JSON_NUM;
-				prop.val.number = num_val;
-			} else if (valstr.data[0] == '{' && valstr.data[valstr.length-1] == '}'){
-				printf("obj\n");
-				prop.type = JSON_STRING; // JSON_OBJ;
-				prop.val.string = valstr;
-			} else if (valstr.data[0] == '[' && valstr.data[valstr.length-1] == ']'){
-				printf("arr\n");
-				prop.type = JSON_STRING; // JSON_ARR;
-				prop.val.string = valstr;
+			i = end+1;
+			start = i+1;
+		} else if (cs.data[i] == ',' || i == cs.length-1) {
+			str8_cut((str8){.data = cs.data+start, .length = i-start}, ':', vals);
+
+//			printf("key: %s, val: %s\n", vals[0].data, vals[1].data);
+
+			if (vals[0].length && vals[1].length) {
+				str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, false);
+				str8 valstr = str8_trim_space(vals[1], true);
+				json_node prop = {.key = key};
+				double num_val = 0;
+				
+				if (valstr.data[0] == '\"' && valstr.data[valstr.length-1] == '\"') {
+					prop.type = JSON_STRING;
+					prop.val.string = str8_trim(valstr, (str8){.data = "\"", .length = 1}, false);
+				} else if (strcmp(valstr.data, "true") == 0){
+					prop.type = JSON_BOOL;
+					prop.val.boolean = true;
+				} else if (strcmp(valstr.data, "false") == 0 ){
+					prop.type = JSON_BOOL;
+					prop.val.boolean = false;
+				} else if ( (num_val = strtod(valstr.data, 0)) ){
+					prop.type = JSON_NUM;
+					prop.val.number = num_val;
+				}
+
+				push_json_prop(&result, key, prop);
 			}
 
-			push_json_prop(&result, key, prop);
+			start = i+1;
 		}
 	}
+
 	
 	return result;
 }
@@ -243,11 +294,10 @@ int main(int argc, char** argv) {
 	json_obj result = parse_json_object(contents.data, contents.length);
 
 	printf("{\n");
-	const char* indent = "    ";
 	for (int i = 0; i < result.length; i++) {
 		json_node* node = result.props + i;
 		while (node && node->key.length) {
-			printf("%s\"%s\" : %s\n", indent, node->key.data, json_prop_to_str8(*node).data);
+			printf("%s\n", json_prop_to_str8(*node, 1).data);
 			node = node->next;
 		}
 	}

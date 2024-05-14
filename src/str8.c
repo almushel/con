@@ -53,6 +53,20 @@ bool str8_contains(str8 s, int c) {
 	return false;
 }
 
+str8 str8_concat(str8 left, str8 right) {
+	if (left.length == 0) {
+		return new_str8(right.data, right.length);
+	}
+	if (right.length == 0) {
+		return new_str8(left.data, left.length);
+	}
+
+	str8 result = new_str8(left.data, left.length+right.length);
+	memcpy(result.data+left.length, right.data, right.length);
+
+	return result;
+}
+
 str8* str8_split(str8 s, int delim) {
 	str8* result = darr_new(str8, 8);
 
@@ -81,6 +95,7 @@ str8* str8_cut(str8 s, int sep, str8 result[2]) {
 		if (s.data[i] == sep) {
 			result[0] = new_str8(s.data, i);
 			result[1] = new_str8(s.data+i+1, s.length-i-1);
+			break;
 		};
 	}
 
