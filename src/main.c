@@ -2,8 +2,9 @@
 #include <stdio.h>
 
 #include "darr.h"
-#include "str8.c"
-#include "json.c"
+#define STR8_IMPLEMENTATION
+#define FREDC_IMPLEMENTATOIN
+#include "fredc.h"
 
 str8 read_all(char* filename) {
 	char buf[1024];
@@ -38,17 +39,17 @@ int main(int argc, char** argv) {
 	}
 
 	str8 contents = str8_trim_space(read_all(argv[1]), true);
-	if (!validate_json_object(contents.data, contents.length)) {
+	if (!fredc_validate_json(contents.data, contents.length)) {
 		fprintf(stderr, "%s\n", contents.data);
 		return 1;
 	}
 
 	printf("%s\n",
-		json_prop_to_str8(
-			(json_node) {
+		fredc_node_to_str8(
+			(fredc_node) {
 				.key = (str8){.data = argv[1], .length = strlen(argv[1])},
 				.val.type = JSON_OBJ,
-				.val.object = parse_json_object(contents.data, contents.length),
+				.val.object = fredc_parse_obj_str(contents.data, contents.length),
 		},0).data
 	);
 

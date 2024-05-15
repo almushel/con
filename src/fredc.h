@@ -1,15 +1,13 @@
-#include <assert.h>
+#ifndef FREDC_H
+#define FREDC_H
+
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stddef.h>
 
 #include "darr.h"
 #include "str8.h"
 
-#define STR8_OBJ_MIN 8
-
-enum json_data_types {
+enum fredc_data_types {
 	JSON_NULL = 0,
 	JSON_NUM,
 	JSON_STRING,
@@ -18,33 +16,53 @@ enum json_data_types {
 	JSON_LIST
 };
 
-typedef struct json_node json_node;
-typedef struct json_val json_val;
+typedef struct fredc_node fredc_node;
+typedef struct fredc_val fredc_val;
+typedef struct fredc_obj fredc_obj;
 
-typedef struct json_obj {
-	json_node* props;
+struct fredc_obj {
+	fredc_node* props;
 	size_t length;
 
-	json_node* pool;
-} json_obj;
+	fredc_node* pool;
+};
 
-struct json_val {
-	enum json_data_types type;
+struct fredc_val {
+	enum fredc_data_types type;
 	union {
 		bool boolean;
 		double number;
 		str8 string;
-		json_obj object;
-		json_val* list;
+		fredc_obj object;
+		fredc_val* list;
 	};
 };
 
-struct json_node {
+struct fredc_node {
 	str8 key;
-	json_val val;
+	fredc_val val;
 
-	json_node* next;
+	fredc_node* next;
 };
+
+fredc_obj new_fredc_obj(size_t length);
+str8 fredc_val_to_str8(fredc_val val, int indent);
+str8 fredc_node_to_str8(fredc_node prop, int indent);
+bool fredc_validate_json(char* contents, size_t length);
+fredc_obj fredc_parse_obj_str(char* contents, size_t length);
+fredc_val* fredc_parse_list_str(char* contents, size_t length);
+
+#endif
+
+#define FREDC_IMPLEMENTATION
+#ifdef FREDC_IMPLEMENTATION
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define STR8_OBJ_MIN 8
 
 static size_t str8_hash(str8 key) {
 	size_t result = 0;
@@ -56,25 +74,25 @@ static size_t str8_hash(str8 key) {
 	return result;
 }
 
-json_obj new_json_obj(size_t length) {
+fredc_obj new_fredc_obj(size_t length) {
 	if (length < STR8_OBJ_MIN) {
 		length = STR8_OBJ_MIN;
 	}
 
-	json_obj result = (json_obj) {
-		.props = calloc(length, sizeof(json_node)),
+	fredc_obj result = (fredc_obj) {
+		.props = calloc(length, sizeof(fredc_node)),
 		.length = length,
-		.pool = darr_new(json_node, length/2)
+		.pool = darr_new(fredc_node, length/2)
 	};
 
 	return result;
 }
 
-void push_json_prop(json_obj* map, str8 key, json_val prop) {
+void push_json_prop(fredc_obj* map, str8 key, fredc_val prop) {
 	size_t index = str8_hash(key) % map->length;
 	assert(index < map->length);
 
-	json_node* dest = map->props + index;
+	fredc_node* dest = map->props + index;
 	if (dest->key.length == 0 || strcmp(dest->key.data, key.data) == 0) {
 		dest->key = key;
 		dest->val = prop;
@@ -84,16 +102,15 @@ void push_json_prop(json_obj* map, str8 key, json_val prop) {
 		}
 
 
-		json_node node = {.key = key, .val = prop};
+		fredc_node node = {.key = key, .val = prop};
 		darr_push(map->pool, node);
 		dest->next = map->pool + darr_len(map->pool)-1;
 	}
 }
 
 #define INDENT_SIZE 4
-str8 json_prop_to_str8(json_node prop, int indent);
 
-str8 json_val_to_str8(json_val val, int indent) {
+str8 fredc_val_to_str8(fredc_val val, int indent) {
 	str8 result = {};
 
 	switch (val.type) {
@@ -127,7 +144,7 @@ str8 json_val_to_str8(json_val val, int indent) {
 					result = str8_concat(result, (str8){.data="\n", .length = 1});
 					result = str8_concat(
 						result,
-						json_prop_to_str8(val.object.props[i], indent+1)
+						fredc_node_to_str8(val.object.props[i], indent+1)
 					);
 				}
 			}
@@ -150,11 +167,11 @@ str8 json_val_to_str8(json_val val, int indent) {
 				str8 indent_str = new_str8("", (indent+1)*INDENT_SIZE);
 				memset(indent_str.data, ' ', indent_str.length);
 
-				json_node node = {};
+				fredc_node node = {};
 				for (int i = 0; i < darr_len(val.list); i++) {
 					node.val = val.list[i];
 					result = str8_concat(result, (str8){.data="\n", .length = 1});
-					str8 val_str = json_val_to_str8(node.val, indent+1);
+					str8 val_str = fredc_val_to_str8(node.val, indent+1);
 					
 					result = str8_concat(result, str8_concat(indent_str, val_str));
 				}
@@ -176,7 +193,7 @@ str8 json_val_to_str8(json_val val, int indent) {
 	return result;
 }
 
-str8 json_prop_to_str8(json_node prop, int indent) {
+str8 fredc_node_to_str8(fredc_node prop, int indent) {
 	str8 key, valstr, result = {};
 	int key_offset = indent*INDENT_SIZE;
 
@@ -188,34 +205,15 @@ str8 json_prop_to_str8(json_node prop, int indent) {
 	key.data[key.length-2] = ':';
 	key.data[key.length-1] = ' ';
 
-	valstr = json_val_to_str8(prop.val, indent);
+	valstr = fredc_val_to_str8(prop.val, indent);
 
 	result = str8_concat(key, valstr);
 
 	return result;
 }
 
-bool validate_json_object(char* contents, size_t length) {
-	if ( (contents == 0) || (length == 0) )  {
-		fprintf(stderr, "invalid json: empty\n");
-		return false;
-	}
-
-	// TODO: Verify that characters being skipped are whitespace
-	size_t start = 0, end = length;
-	while (contents[start] != '{' && start < end) start++;
-	while (contents[end] != '}' && end > start) end--;
-
-	if ( start >= end) {
-		fprintf(stderr, "invalid json: no top level object\n");
-		return false;
-	}
-	
-	return true;
-}
-
-json_val parse_json_val(char* contents, size_t length) {
-	json_val result = {};
+fredc_val parse_fredc_val(char* contents, size_t length) {
+	fredc_val result = {};
 	double num_val = 0;
 	
 	if (contents[0] == '\"' && contents[length-1] == '\"') {
@@ -235,11 +233,11 @@ json_val parse_json_val(char* contents, size_t length) {
 	return result;
 }
 
-json_val* parse_json_list(char* contents, size_t length) {
-	json_val* result = 0;	
+fredc_val* fredc_parse_list_str(char* contents, size_t length) {
+	fredc_val* result = 0;	
 
 	if ((contents[0] == '[') && (contents[length-1] == ']') && (contents[length] == '\0') ) {
-		result = darr_new(json_val, 2);
+		result = darr_new(fredc_val, 2);
 		str8 cs = str8_trim(
 			(str8){.data = contents, .length = length}, 
 			(str8){.data = "[]", .length = 2},
@@ -249,7 +247,7 @@ json_val* parse_json_list(char* contents, size_t length) {
 		
 		for (int i = 0; i < darr_len(val_strs); i++) {
 			if (val_strs[i].length) {
-				json_val item = parse_json_val(val_strs[i].data, val_strs[i].length);
+				fredc_val item = parse_fredc_val(val_strs[i].data, val_strs[i].length);
 				darr_push(result, item);
 			}
 		}
@@ -258,12 +256,12 @@ json_val* parse_json_list(char* contents, size_t length) {
 	return result;
 }
 
-json_obj parse_json_object(char* contents, size_t length) {
+fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
 	if ((contents[0] != '{') || (contents[length-1] != '}') || (contents[length] != '\0')) {
-		return (json_obj){};
+		return (fredc_obj){};
 	}
 
-	json_obj result = new_json_obj(16);
+	fredc_obj result = new_fredc_obj(16);
 	str8 cs = str8_trim(
 			(str8){.data = contents, .length = length},
 			(str8){.data = "{}", .length = 2},
@@ -290,9 +288,9 @@ json_obj parse_json_object(char* contents, size_t length) {
 			str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, false);
 			str8 objstr = str8_trim_space(vals[1], false);
 
-			json_val new_obj = {
+			fredc_val new_obj = {
 				.type = JSON_OBJ,
-				.object = parse_json_object(objstr.data, objstr.length),
+				.object = fredc_parse_obj_str(objstr.data, objstr.length),
 			};
 			push_json_prop(&result, key, new_obj);
 			
@@ -315,9 +313,9 @@ json_obj parse_json_object(char* contents, size_t length) {
 			str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, false);
 			str8 liststr = str8_trim_space(vals[1], false);
 
-			json_val new_list = {
+			fredc_val new_list = {
 				.type = JSON_LIST,
-				.list = parse_json_list(liststr.data, liststr.length)
+				.list = fredc_parse_list_str(liststr.data, liststr.length)
 			};
 			push_json_prop(&result, key, new_list);
 			
@@ -329,7 +327,7 @@ json_obj parse_json_object(char* contents, size_t length) {
 			if (vals[0].length && vals[1].length) {
 				str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, false);
 				str8 valstr = str8_trim_space(vals[1], true);
-				json_val val = parse_json_val(valstr.data, valstr.length);
+				fredc_val val = parse_fredc_val(valstr.data, valstr.length);
 
 				push_json_prop(&result, key, val);
 			}
@@ -342,3 +340,22 @@ json_obj parse_json_object(char* contents, size_t length) {
 	return result;
 }
 
+bool fredc_validate_json(char* contents, size_t length) {
+	if ( (contents == 0) || (length == 0) )  {
+		fprintf(stderr, "invalid json: empty\n");
+		return false;
+	}
+
+	size_t start = 0, end = length;
+	while (contents[start] != '{' && start < end) start++;
+	while (contents[end] != '}' && end > start) end--;
+
+	if ( start >= end) {
+		fprintf(stderr, "invalid json: no top level object\n");
+		return false;
+	}
+	
+	return true;
+}
+
+#endif
