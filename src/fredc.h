@@ -138,24 +138,40 @@ str8 fredc_val_to_str8(fredc_val val, int indent) {
 		} break;
 
 		case JSON_OBJ: {
-			result = (str8){.data = "{", .length = 1};
+			int count = 0;
+			str8 props = {.data = "{", .length = 1};
 			for (int i = 0; i < val.object.length; i++) {
 				if (val.object.props[i].key.length) {
-					result = str8_concat(result, (str8){.data="\n", .length = 1});
-					result = str8_concat(
-						result,
+					props = str8_concat(props, (str8){.data="\n", .length = 1});
+					props = str8_concat(
+						props,
 						fredc_node_to_str8(val.object.props[i], indent+1)
 					);
+					props = str8_concat(props, (str8){.data = ",", .length = 1});
+					count++;
 				}
 			}
 
-			if (result.length > 1) {
-				str8 bracket = new_str8("", (indent*INDENT_SIZE)+2);
-				bracket.data[0] ='\n';
-				memset(bracket.data+1, ' ', indent*INDENT_SIZE);
-				bracket.data[bracket.length-1] = '}';
+			if (props.length) {
+				str8 bracket;
+				if (count > 1) {
+					props.length--; //Remove last comma
+
+					str8 bracket = new_str8("", (indent*INDENT_SIZE)+2);
+					bracket.data[0] ='\n';
+					memset(bracket.data+1, ' ', indent*INDENT_SIZE);
+					bracket.data[bracket.length-1] = '}';
+				} else {
+					int offset = (indent+1)*INDENT_SIZE;
+					props.data += offset;
+					props.data[0] = '{';
+					props.length -= offset;
+
+					bracket.data = " }";
+					bracket.length = 2;
+				}
 				
-				result = str8_concat(result, bracket);
+				result = str8_concat(props, bracket);
 			} else {
 				result = new_str8("{}", 2);
 			}
@@ -174,6 +190,9 @@ str8 fredc_val_to_str8(fredc_val val, int indent) {
 					str8 val_str = fredc_val_to_str8(node.val, indent+1);
 					
 					result = str8_concat(result, str8_concat(indent_str, val_str));
+					if (i != darr_len(val.list)-1) {
+						result = str8_concat(result, (str8){.data = ",", .length = 1});
+					}
 				}
 
 				str8 bracket = new_str8("", (indent*INDENT_SIZE)+2);
@@ -247,6 +266,7 @@ fredc_val* fredc_parse_list_str(char* contents, size_t length) {
 		
 		for (int i = 0; i < darr_len(val_strs); i++) {
 			if (val_strs[i].length) {
+				val_strs[i] = str8_trim_space(val_strs[i], true);	
 				fredc_val item = parse_fredc_val(val_strs[i].data, val_strs[i].length);
 				darr_push(result, item);
 			}
