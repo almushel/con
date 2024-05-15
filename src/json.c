@@ -274,9 +274,16 @@ json_obj parse_json_object(char* contents, size_t length) {
 	str8 vals[2];
 	for (int i = 0; i < cs.length; i++) {
 		if (cs.data[i] == '{') {
+			int nesting_level = 1;
 			int end;
 			for (end = i+1;end < cs.length;end++) {
-				if (cs.data[end] == '}') break;
+				if (cs.data[end] == '{') nesting_level++; 
+				else if (cs.data[end] == '}') {
+					nesting_level--;
+					if (nesting_level == 0) {
+						break;
+					}
+				}
 	 		}
 				
 			str8_cut((str8) {.data = cs.data+start, .length = end-start+1}, ':', vals);
@@ -292,9 +299,16 @@ json_obj parse_json_object(char* contents, size_t length) {
 			i = end+1;
 			start = i+1;
 		} else if (cs.data[i] == '[') {
+			int nesting_level = 1;
 			int end;
 			for (end = i+1;end < cs.length;end++) {
-				if (cs.data[end] == ']') break;
+				if (cs.data[end] == '[') nesting_level++;
+				else if (cs.data[end] == ']') {
+					nesting_level--;
+					if (nesting_level == 0) {
+						break;
+					}
+				}
 	 		}
 				
 			str8_cut((str8) {.data = cs.data+start, .length = end-start+1}, ':', vals);
