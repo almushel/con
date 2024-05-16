@@ -3,17 +3,21 @@
 
 #include <stddef.h>
 
+#include "darr.h"
+
 typedef struct str8 {
 	char* data;
 	size_t length;
 } str8;
+
+darr_def(str8);
 
 void str8_free_pool();
 str8 new_str8(const char* data, size_t length);
 str8 str8_cpy(const str8 src);
 bool str8_contains(str8 s, int c);
 str8 str8_concat(str8 left, str8 right);
-str8* str8_split(str8 s, int delim);
+str8_list str8_split(str8 s, int delim);
 str8* str8_cut(str8 s, int sep, str8 result[2]);
 str8 str8_trim_space(str8 s, bool inplace);
 str8 str8_trim(str8 s, str8 cutset, bool inplace);
@@ -25,25 +29,27 @@ str8 str8_trim(str8 s, str8 cutset, bool inplace);
 #include <ctype.h>
 
 #define POOL_MIN_SIZE 256
-static char* pool = 0;
+
+typedef struct str8_pool {
+	char* data;
+	size_t length, capacity;
+} str8_pool;
+static struct str8_pool pool = {};
 
 void str8_free_pool() {
-	if (pool) {
-		darr_free(pool);
+	if (pool.data) {
+		free(pool.data);
+		pool = (str8_pool){};
 	}
 }
 
 str8 new_str8(const char* data, size_t length) {
-	if (pool == 0) {
-		pool = darr_new(char, POOL_MIN_SIZE);
-	}
-
-	int start = darr_len(pool);
+	int start = pool.length;
 	darr_push_arr(pool, data, length);
 	darr_push(pool, '\0');
 
 	str8 result = {
-		.data = pool+start,
+		.data = pool.data+start,
 		.length = length,
 	};
 
@@ -80,8 +86,8 @@ str8 str8_concat(str8 left, str8 right) {
 	return result;
 }
 
-str8* str8_split(str8 s, int delim) {
-	str8* result = darr_new(str8, 8);
+str8_list str8_split(str8 s, int delim) {
+	str8_list result = {};
 
 	int start = 0, c = 0;
 	for (; c < s.length; c++) {
@@ -91,7 +97,7 @@ str8* str8_split(str8 s, int delim) {
 		}
 	}
 
-	if (darr_len(result) == 0) {
+	if (result.length == 0) {
 		darr_push(result, s);
 	} else if (start < c) {
 		darr_push(result, new_str8(s.data+start, c-start));

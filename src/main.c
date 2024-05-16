@@ -6,10 +6,11 @@
 #define FREDC_IMPLEMENTATOIN
 #include "fredc.h"
 
+darr_def(char);
+
 str8 read_all(char* filename) {
 	char buf[1024];
-	char* data = darr_new(char, sizeof(buf));
-	str8 result = {};
+	char_list result = {};
 
 	FILE* fstream = fopen(filename, "r");
 	if (!fstream) {
@@ -19,17 +20,22 @@ str8 read_all(char* filename) {
 
 	size_t bytes_read = 0;
 	while ((bytes_read = fread(buf, 1, sizeof(buf), fstream)) > 0){
-		darr_push_arr(data, buf, bytes_read);
+		darr_push_arr(result, buf, bytes_read);
 	}
 
-	if (feof(fstream) && !ferror(fstream)) {
-		result = new_str8(data, darr_len(data));
+	if (feof(fstream) || !ferror(fstream)) {
+		darr_resize(result, sizeof(result.data[0]), result.length);
+	} else {
+		free(result.data);
+		result = (char_list){};
 	}
 	fclose(fstream);
 
 	cleanup:
-		darr_free(data);
-		return result;
+		return (str8) {
+			.data = result.data,
+			.length = result.length-1
+		};
 }
 
 int main(int argc, char** argv) {
@@ -43,15 +49,16 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "%s\n", contents.data);
 		return 1;
 	}
+	str8_free_pool();
 
-	printf("%s\n",
-		fredc_node_to_str8(
-			(fredc_node) {
-				.key = (str8){.data = argv[1], .length = strlen(argv[1])},
-				.val.type = JSON_OBJ,
-				.val.object = fredc_parse_obj_str(contents.data, contents.length),
-		},0).data
-	);
+	fredc_node node = {
+		.key = (str8){.data = argv[1], .length = strlen(argv[1])},
+		.val.type = JSON_OBJ,
+		.val.object = fredc_parse_obj_str(contents.data, contents.length),
+	};
+	free(contents.data);
+
+	printf("%s\n", fredc_node_to_str8(node,0).data);
 
 	return 0;
 }
