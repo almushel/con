@@ -27,7 +27,7 @@ struct fredc_obj {
 	fredc_node* props; // hash map
 	size_t length;
 
-	fredc_node_list pool; // darr
+	fredc_node_list pool; // darr (dynamic array)
 };
 
 struct fredc_val {
@@ -49,11 +49,18 @@ struct fredc_node {
 };
 
 fredc_obj new_fredc_obj(size_t length);
-str8 fredc_val_to_str8(fredc_val val, int indent);
-str8 fredc_node_to_str8(fredc_node prop, int indent);
 bool fredc_validate_json(char* contents, size_t length);
 fredc_obj fredc_parse_obj_str(char* contents, size_t length);
 fredc_list fredc_parse_list_str(char* contents, size_t length);
+
+str8 fredc_val_str8ify(fredc_val val, int indent);
+str8 fredc_node_str8ify(fredc_node prop, int indent);
+str8 fredc_obj_str8ify(fredc_obj o);
+char* fredc_obj_stringify(fredc_obj o);
+
+void fredc_val_free(fredc_val *v);
+void fredc_node_free(fredc_node *n);
+void fredc_obj_free(fredc_obj* o);
 
 #endif
 
@@ -116,7 +123,7 @@ void push_fredc_prop(fredc_obj* map, str8 key, fredc_val prop) {
 
 #define INDENT_SIZE 4
 
-str8 fredc_val_to_str8(fredc_val val, int indent) {
+str8 fredc_val_str8ify(fredc_val val, int indent) {
 	str8 result = {};
 
 	switch (val.type) {
@@ -151,7 +158,7 @@ str8 fredc_val_to_str8(fredc_val val, int indent) {
 					props = str8_concat(props, (str8){.data="\n", .length = 1});
 					props = str8_concat(
 						props,
-						fredc_node_to_str8(val.object.props[i], indent+1)
+						fredc_node_str8ify(val.object.props[i], indent+1)
 					);
 					props = str8_concat(props, (str8){.data = ",", .length = 1});
 					count++;
@@ -194,7 +201,7 @@ str8 fredc_val_to_str8(fredc_val val, int indent) {
 				for (int i = 0; i < val.list.length; i++) {
 					node.val = val.list.data[i];
 					result = str8_concat(result, (str8){.data="\n", .length = 1});
-					str8 val_str = fredc_val_to_str8(node.val, indent+1);
+					str8 val_str = fredc_val_str8ify(node.val, indent+1);
 					
 					result = str8_concat(result, str8_concat(indent_str, val_str));
 					if (i != (val.list.length)-1) {
@@ -219,7 +226,7 @@ str8 fredc_val_to_str8(fredc_val val, int indent) {
 	return result;
 }
 
-str8 fredc_node_to_str8(fredc_node prop, int indent) {
+str8 fredc_node_str8ify(fredc_node prop, int indent) {
 	str8 key, valstr, result = {};
 	int key_offset = indent*INDENT_SIZE;
 
@@ -231,11 +238,21 @@ str8 fredc_node_to_str8(fredc_node prop, int indent) {
 	key.data[key.length-2] = ':';
 	key.data[key.length-1] = ' ';
 
-	valstr = fredc_val_to_str8(prop.val, indent);
+	valstr = fredc_val_str8ify(prop.val, indent);
 
 	result = str8_concat(key, valstr);
 
 	return result;
+}
+
+str8 fredc_obj_str8ify(fredc_obj o) {
+	str8 result = fredc_val_str8ify((fredc_val) {.type = JSON_OBJ, .object = o}, 0);
+	return result;
+}
+
+char* fredc_obj_stringify(fredc_obj o) {
+	str8 result = fredc_val_str8ify((fredc_val) {.type = JSON_OBJ, .object = o}, 0);
+	return result.data;
 }
 
 fredc_val parse_fredc_val(char* contents, size_t length) {
@@ -387,6 +404,41 @@ bool fredc_validate_json(char* contents, size_t length) {
 	}
 	
 	return true;
+}
+
+void fredc_val_free(fredc_val* v) {
+	switch(v->type) {
+		JSON_STRING: {
+			free(v->string.data);
+		} break;
+		JSON_OBJ: {
+			fredc_obj_free(&v->object);
+		} break;
+		JSON_LIST: {
+			free(v->list.data);
+		} break;
+		
+		default: break;
+	}
+	v->type = JSON_NULL;
+}
+
+void fredc_node_free(fredc_node* n) {
+	fredc_val_free(&n->val);
+	free(n->key.data);
+}
+
+void fredc_obj_free(fredc_obj* o) {
+	for (int i = 0; i < o->length; i++) {
+		fredc_node* node = o->props+i;
+		while(node) {
+			fredc_node_free(node);
+			node = node->next;
+		}
+	}
+	free(o->props);
+	free(o->pool.data);
+	o->pool = (fredc_node_list){0};
 }
 
 #endif

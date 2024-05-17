@@ -51,14 +51,11 @@ int main(int argc, char** argv) {
 	}
 	str8_free_pool();
 
-	fredc_node node = {
-		.key = (str8){.data = argv[1], .length = strlen(argv[1])},
-		.val.type = JSON_OBJ,
-		.val.object = fredc_parse_obj_str(contents.data, contents.length),
-	};
+	fredc_obj obj = fredc_parse_obj_str(contents.data, contents.length);
 	free(contents.data);
-
-	printf("%s\n", fredc_node_to_str8(node,0).data);
+	
+	printf("%s\n", fredc_obj_stringify(obj));
+	fredc_obj_free(&obj);
 
 	return 0;
 }
