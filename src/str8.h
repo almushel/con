@@ -17,7 +17,7 @@ str8 new_str8(const char* data, size_t length);
 str8 str8_cpy(const str8 src);
 bool str8_contains(str8 s, int c);
 str8 str8_concat(str8 left, str8 right);
-str8_list str8_split(str8 s, int delim);
+str8_list str8_split(str8 s, int delim, bool inplace);
 str8* str8_cut(str8 s, int sep, str8 result[2]);
 str8 str8_trim_space(str8 s, bool inplace);
 str8 str8_trim(str8 s, str8 cutset, bool inplace);
@@ -86,13 +86,14 @@ str8 str8_concat(str8 left, str8 right) {
 	return result;
 }
 
-str8_list str8_split(str8 s, int delim) {
+str8_list str8_split(str8 s, int delim, bool inplace) {
 	str8_list result = {};
 
 	int start = 0, c = 0;
 	for (; c < s.length; c++) {
 		if (s.data[c] == delim) {
-			darr_push(result, new_str8(s.data+start, c-start));
+			str8 substr = {.data=s.data+start, .length=c-start};
+			darr_push(result, inplace ? substr : new_str8(substr.data, substr.length));
 			start = c+1;
 		}
 	}
@@ -100,7 +101,8 @@ str8_list str8_split(str8 s, int delim) {
 	if (result.length == 0) {
 		darr_push(result, s);
 	} else if (start < c) {
-		darr_push(result, new_str8(s.data+start, c-start));
+		str8 substr = {.data=s.data+start, .length=c-start};
+		darr_push(result, inplace ? substr : new_str8(substr.data, substr.length));
 	}
 
 	return result;

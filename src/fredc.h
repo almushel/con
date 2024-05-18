@@ -72,16 +72,16 @@ void fredc_obj_free(fredc_obj* o);
 #include <stdlib.h>
 #include <string.h>
 
-#define FREDC_OBJ_MIN 8
+#define FREDC_OBJ_MIN 2
 
-static size_t str8_hash(str8 key) {
+static size_t fredc_hash(fredc_obj* obj, str8 key) {
 	size_t result = 0;
 
 	for (int i = 0; i < key.length; i++) {
 		result += key.data[i] << 1;
 	}
 
-	return result;
+	return result % obj->length;
 }
 
 fredc_obj new_fredc_obj(size_t length) {
@@ -97,18 +97,21 @@ fredc_obj new_fredc_obj(size_t length) {
 	return result;
 }
 
-void push_fredc_prop(fredc_obj* map, str8 key, fredc_val prop) {
-	size_t index = str8_hash(key) % map->length;
-	assert(index < map->length);
+void push_fredc_prop(fredc_obj* obj, str8 key, fredc_val prop) {
+	size_t index = fredc_hash(obj, key);
+	assert(index < obj->length);
 
 	str8 key2;
 	key2.length = key.length;
 	key2.data = (char*)malloc(key2.length+1);
 	memcpy(key2.data, key.data, key2.length);
 
-	fredc_node* dest = map->props + index;
-	if (dest->key.length == 0 || strcmp(dest->key.data, key2.data) == 0) {
+	fredc_node* dest = obj->props + index;
+	if (dest->key.length == 0) {
 		dest->key = key2;
+		dest->val = prop;
+	} else if (strcmp(dest->key.data, key2.data) == 0) {
+		free(key2.data);
 		dest->val = prop;
 	} else {
 		while (dest->next) {
@@ -116,9 +119,70 @@ void push_fredc_prop(fredc_obj* map, str8 key, fredc_val prop) {
 		}
 
 		fredc_node node = {.key = key2, .val = prop};
-		darr_push(map->pool, node);
-		dest->next = map->pool.data + (map->pool.length-1);
+		darr_push(obj->pool, node);
+		dest->next = obj->pool.data + (obj->pool.length-1);
 	}
+}
+
+fredc_node* fredc_get_node(fredc_obj* obj, const char* key) {
+	if (key == 0) { return 0; }
+	size_t index = fredc_hash(obj, (str8){.data= (char*)key, .length = strlen(key)});
+
+	fredc_node* node = obj->props+index;
+	while (node && node->key.length && strcmp(node->key.data, key) != 0){ 
+		node = node->next;
+	}
+
+	if (node && (node->key.length == 0 || node->key.data == 0)) {
+		node = 0;
+	}
+
+	return node;
+}
+
+fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
+	fredc_val result = {};
+
+	str8_list keys = str8_split((str8){.data=(char*)key, .length=strlen(key)}, '.', true);
+	fredc_node* node = fredc_get_node(obj, keys.data[0].data);
+
+	if (node == 0) {
+		if (keys.length > 1) {
+			fredc_obj new_obj = new_fredc_obj(0);
+			result = fredc_set_prop(&new_obj, keys.data[1].data, val);
+			
+			if (result.type == val.type) {
+				fredc_val obj_val = {
+					.type = JSON_OBJ,
+					.object = new_obj
+				};
+				push_fredc_prop(obj, keys.data[0], obj_val);
+
+			} else {
+				printf("free\n");
+				fredc_obj_free(&new_obj);
+			}
+		} else {
+			push_fredc_prop(obj, keys.data[0], val);
+			result = val;
+		}
+	} else {
+		if (keys.length > 1) {
+			if (node->val.type == JSON_OBJ){ 
+				result = fredc_set_prop(&node->val.object, keys.data[1].data, val);
+			} else {
+				printf("can't set properties of non-object %s\n", node->key.data);
+				result = (fredc_val){};
+			}
+		} else {
+			node->key = keys.data[0];
+			node->val = val;
+			result = val;
+		}
+	}
+	free(keys.data);
+
+	return result;
 }
 
 #define INDENT_SIZE 4
@@ -154,14 +218,18 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 			int count = 0;
 			str8 props = {.data = "{", .length = 1};
 			for (int i = 0; i < val.object.length; i++) {
-				if (val.object.props[i].key.length) {
-					props = str8_concat(props, (str8){.data="\n", .length = 1});
-					props = str8_concat(
-						props,
-						fredc_node_str8ify(val.object.props[i], indent+1)
-					);
-					props = str8_concat(props, (str8){.data = ",", .length = 1});
-					count++;
+				fredc_node* node = val.object.props+i;
+				while (node) {
+					if (node->key.length) {
+						props = str8_concat(props, (str8){.data="\n", .length = 1});
+						props = str8_concat(
+							props,
+							fredc_node_str8ify(*node, indent+1)
+						);
+						props = str8_concat(props, (str8){.data = ",", .length = 1});
+						count++;
+					}
+					node = node->next;
 				}
 			}
 
@@ -290,7 +358,7 @@ fredc_val_list fredc_parse_list_str(char* contents, size_t length) {
 			(str8){.data = "[]", .length = 2},
 			true
 		);
-		str8_list val_strs = str8_split(cs, ',');
+		str8_list val_strs = str8_split(cs, ',', true);
 		
 		for (int i = 0; i < val_strs.length; i++) {
 			if (val_strs.data[i].length) {
@@ -309,7 +377,7 @@ fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
 		return (fredc_obj){};
 	}
 
-	fredc_obj result = new_fredc_obj(16);
+	fredc_obj result = new_fredc_obj(0);
 	str8 cs = str8_trim(
 			(str8){.data = contents, .length = length},
 			(str8){.data = "{}", .length = 2},

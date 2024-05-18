@@ -53,7 +53,9 @@ int main(int argc, char** argv) {
 
 	fredc_obj obj = fredc_parse_obj_str(contents.data, contents.length);
 	free(contents.data);
-	
+	const char* prop_key = "foo.bar.foo.bar";
+	fredc_set_prop(&obj, prop_key, (fredc_val){.type = JSON_BOOL, .boolean = true});
+
 	printf("%s\n", fredc_obj_stringify(obj));
 	fredc_obj_free(&obj);
 

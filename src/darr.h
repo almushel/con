@@ -13,7 +13,7 @@ typedef struct {
 	size_t capacity, size;
 } darr_header;
 
-#define DARR_DEFAULT_CAP 16
+#define DARR_MIN_CAP 16
 
 #define darr_def(type) \
 typedef struct type##_list {\
@@ -22,9 +22,9 @@ typedef struct type##_list {\
 } type##_list
 
 #define darr_resize(arr, size, new_cap) {\
-	arr.data = realloc(arr.data, size*(new_cap > 0 ? new_cap : DARR_DEFAULT_CAP));\
+	arr.data = realloc(arr.data, size*(new_cap > 0 ? new_cap : DARR_MIN_CAP));\
 	assert(arr.data);\
-	arr.capacity = new_cap > 0 ? new_cap : DARR_DEFAULT_CAP;\
+	arr.capacity = new_cap > 0 ? new_cap : DARR_MIN_CAP;\
 	if (arr.length > arr.capacity) { arr.length = arr.capacity; }\
 };
 
