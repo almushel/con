@@ -53,6 +53,9 @@ bool fredc_validate_json(char* contents, size_t length);
 fredc_obj fredc_parse_obj_str(char* contents, size_t length);
 fredc_list fredc_parse_list_str(char* contents, size_t length);
 
+fredc_val fredc_get_prop(fredc_obj* obj, const char* key);
+fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val);
+
 str8 fredc_val_str8ify(fredc_val val, int indent);
 str8 fredc_node_str8ify(fredc_node prop, int indent);
 str8 fredc_obj_str8ify(fredc_obj o);
@@ -97,7 +100,7 @@ fredc_obj new_fredc_obj(size_t length) {
 	return result;
 }
 
-void push_fredc_prop(fredc_obj* obj, str8 key, fredc_val prop) {
+void fredc_push_prop(fredc_obj* obj, str8 key, fredc_val prop) {
 	size_t index = fredc_hash(obj, key);
 	assert(index < obj->length);
 
@@ -140,6 +143,9 @@ fredc_node* fredc_get_node(fredc_obj* obj, str8 key) {
 	return node;
 }
 
+// obj: target object
+// key: string describing the location of the property in dot notation (e.g. [obj.]"foo.bar") 
+// returns: val on success or undefined fredc_val on failure
 fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
 	fredc_val result = {};
 
@@ -162,14 +168,20 @@ fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
 		return result;
 }
 
+// obj: target object
+// key: string describing the location of the property in dot notation (e.g. [obj.]"foo.bar") 
+// val: the fred_c val to be set
+// returns: val on success or undefined fredc_val on failure
+//
+// Will replace only the last key and fail on any preceding key that is not an object.
 fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
 	fredc_val result = {};
 
 	str8_list keys = str8_split((str8){.data=(char*)key, .length=strlen(key)}, '.', true);
 	fredc_node* node = fredc_get_node(obj, keys.data[0]);
 
-	if (node == 0) {
-		if (keys.length > 1) {
+	if (keys.length > 1) {
+		if (node == 0) {
 			fredc_obj new_obj = new_fredc_obj(0);
 			result = fredc_set_prop(&new_obj, keys.data[1].data, val);
 			
@@ -178,29 +190,22 @@ fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
 					.type = JSON_OBJ,
 					.object = new_obj
 				};
-				push_fredc_prop(obj, keys.data[0], obj_val);
+				fredc_push_prop(obj, keys.data[0], obj_val);
 
 			} else {
 				fredc_obj_free(&new_obj);
 			}
+		} else if (node->val.type == JSON_OBJ){ 
+			result = fredc_set_prop(&node->val.object, keys.data[1].data, val);
 		} else {
-			push_fredc_prop(obj, keys.data[0], val);
-			result = val;
+			printf("can't set properties of non-object %s\n", node->key.data);
+			result = (fredc_val){};
 		}
 	} else {
-		if (keys.length > 1) {
-			if (node->val.type == JSON_OBJ){ 
-				result = fredc_set_prop(&node->val.object, keys.data[1].data, val);
-			} else {
-				printf("can't set properties of non-object %s\n", node->key.data);
-				result = (fredc_val){};
-			}
-		} else {
-			node->key = keys.data[0];
-			node->val = val;
-			result = val;
-		}
+		fredc_push_prop(obj, keys.data[0], val);
+		result = val;
 	}
+
 	free(keys.data);
 
 	return result;
@@ -429,7 +434,7 @@ fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
 				.type = JSON_OBJ,
 				.object = fredc_parse_obj_str(objstr.data, objstr.length),
 			};
-			push_fredc_prop(&result, key, new_obj);
+			fredc_push_prop(&result, key, new_obj);
 			
 			i = end+1;
 			start = i+1;
@@ -454,7 +459,7 @@ fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
 				.type = JSON_LIST,
 				.list = fredc_parse_list_str(liststr.data, liststr.length)
 			};
-			push_fredc_prop(&result, key, new_list);
+			fredc_push_prop(&result, key, new_list);
 			
 			i = end+1;
 			start = i+1;
@@ -466,7 +471,7 @@ fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
 				str8 valstr = str8_trim_space(vals[1], true);
 				fredc_val val = parse_fredc_val(valstr.data, valstr.length);
 
-				push_fredc_prop(&result, key, val);
+				fredc_push_prop(&result, key, val); 
 			}
 
 			start = i+1;
