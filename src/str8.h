@@ -15,7 +15,10 @@ darr_def(str8);
 void str8_free_pool();
 str8 new_str8(const char* data, size_t length);
 str8 str8_cpy(const str8 src);
+
 bool str8_contains(str8 s, int c);
+bool str8_cmp(str8 left, str8 right);
+
 str8 str8_concat(str8 left, str8 right);
 str8_list str8_split(str8 s, int delim, bool inplace);
 str8* str8_cut(str8 s, int sep, str8 result[2]);
@@ -70,6 +73,20 @@ bool str8_contains(str8 s, int c) {
 	}
 
 	return false;
+}
+
+bool str8_cmp(str8 left, str8 right) {
+	if (left.length != right.length) {
+		return false;
+	}
+
+	for (int i = 0; i < left.length; i++) {
+		if (left.data[i] != right.data[i]) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 str8 str8_concat(str8 left, str8 right) {

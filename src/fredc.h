@@ -124,12 +124,12 @@ void push_fredc_prop(fredc_obj* obj, str8 key, fredc_val prop) {
 	}
 }
 
-fredc_node* fredc_get_node(fredc_obj* obj, const char* key) {
-	if (key == 0) { return 0; }
-	size_t index = fredc_hash(obj, (str8){.data= (char*)key, .length = strlen(key)});
+fredc_node* fredc_get_node(fredc_obj* obj, str8 key) {
+	if (key.data == 0 || key.length == 0) { return 0; }
+	size_t index = fredc_hash(obj, key);
 
 	fredc_node* node = obj->props+index;
-	while (node && node->key.length && strcmp(node->key.data, key) != 0){ 
+	while (node && !str8_cmp(node->key, key)) { 
 		node = node->next;
 	}
 
@@ -140,11 +140,33 @@ fredc_node* fredc_get_node(fredc_obj* obj, const char* key) {
 	return node;
 }
 
+fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
+	fredc_val result = {};
+
+	str8_list keys = str8_split((str8){.data=(char*)key, .length=strlen(key)}, '.', true);
+	fredc_node* node = fredc_get_node(obj, keys.data[0]);
+	if (node == 0) { goto cleanup; }
+
+	if (keys.length > 1) {
+		if (node->val.type == JSON_OBJ) {
+			result = fredc_get_prop(&node->val.object, keys.data[1].data);
+		} else {
+			result = (fredc_val){};
+		}
+	} else {
+		result = node->val;
+	}
+
+	cleanup:
+		free(keys.data);
+		return result;
+}
+
 fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
 	fredc_val result = {};
 
 	str8_list keys = str8_split((str8){.data=(char*)key, .length=strlen(key)}, '.', true);
-	fredc_node* node = fredc_get_node(obj, keys.data[0].data);
+	fredc_node* node = fredc_get_node(obj, keys.data[0]);
 
 	if (node == 0) {
 		if (keys.length > 1) {
@@ -159,7 +181,6 @@ fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
 				push_fredc_prop(obj, keys.data[0], obj_val);
 
 			} else {
-				printf("free\n");
 				fredc_obj_free(&new_obj);
 			}
 		} else {
