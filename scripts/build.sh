@@ -8,4 +8,4 @@ if [ ! -d $BIN_DIR ]; then
 	mkdir $BIN_DIR
 fi
 
-gcc $SRC_DIR/main.c -g -o $BIN_DIR/con
+gcc $SRC_DIR/main.c -g -o $BIN_DIR/fredc

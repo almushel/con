@@ -49,9 +49,9 @@ struct fredc_node {
 };
 
 fredc_obj new_fredc_obj(size_t length);
-bool fredc_validate_json(char* contents, size_t length);
-fredc_obj fredc_parse_obj_str(char* contents, size_t length);
-fredc_list fredc_parse_list_str(char* contents, size_t length);
+bool fredc_validate_json(const char* contents, size_t length);
+fredc_obj fredc_parse_obj_str(const char* contents, size_t length);
+fredc_list fredc_parse_list_str(const char* contents, size_t length);
 
 fredc_val fredc_get_prop(fredc_obj* obj, const char* key);
 fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val);
@@ -113,8 +113,9 @@ void fredc_push_prop(fredc_obj* obj, str8 key, fredc_val prop) {
 	if (dest->key.length == 0) {
 		dest->key = key2;
 		dest->val = prop;
-	} else if (strcmp(dest->key.data, key2.data) == 0) {
+	} else if (str8_cmp(dest->key, key2) ) {
 		free(key2.data);
+		fredc_val_free(&dest->val);
 		dest->val = prop;
 	} else {
 		while (dest->next) {
@@ -259,7 +260,7 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 				}
 			}
 
-			if (props.length) {
+			if (props.length && count) {
 				str8 bracket;
 				if (count > 1) {
 					props.length--; //Remove last comma
@@ -349,12 +350,12 @@ char* fredc_obj_stringify(fredc_obj o) {
 	return result.data;
 }
 
-fredc_val parse_fredc_val(char* contents, size_t length) {
+fredc_val fredc_parse_val(const char* contents, size_t length) {
 	fredc_val result = {};
 	double num_val = 0;
 	
 	if (contents[0] == '\"' && contents[length-1] == '\"') {
-		str8 val = str8_trim((str8){.data=contents, .length = length}, (str8){.data = "\"", .length = 1}, true);
+		str8 val = str8_trim((str8){.data=(char*)contents, .length = length}, (str8){.data = "\"", .length = 1}, true);
 
 		result.type = JSON_STRING;
 		result.string.length = val.length;
@@ -375,12 +376,12 @@ fredc_val parse_fredc_val(char* contents, size_t length) {
 	return result;
 }
 
-fredc_val_list fredc_parse_list_str(char* contents, size_t length) {
+fredc_val_list fredc_parse_list_str(const char* contents, size_t length) {
 	fredc_list result = {};	
 
 	if ((contents[0] == '[') && (contents[length-1] == ']') && (contents[length] == '\0') ) {
 		str8 cs = str8_trim(
-			(str8){.data = contents, .length = length}, 
+			(str8){.data = (char*)contents, .length = length}, 
 			(str8){.data = "[]", .length = 2},
 			true
 		);
@@ -389,7 +390,7 @@ fredc_val_list fredc_parse_list_str(char* contents, size_t length) {
 		for (int i = 0; i < val_strs.length; i++) {
 			if (val_strs.data[i].length) {
 				val_strs.data[i] = str8_trim_space(val_strs.data[i], true);	
-				fredc_val item = parse_fredc_val(val_strs.data[i].data, val_strs.data[i].length);
+				fredc_val item = fredc_parse_val(val_strs.data[i].data, val_strs.data[i].length);
 				darr_push(result, item);
 			}
 		}
@@ -398,17 +399,14 @@ fredc_val_list fredc_parse_list_str(char* contents, size_t length) {
 	return result;
 }
 
-fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
-	if ((contents[0] != '{') || (contents[length-1] != '}') || (contents[length] != '\0')) {
+fredc_obj fredc_parse_obj_str(const char* contents, size_t length) {
+	str8 cs = str8_trim_space((str8){.data = (char*)contents, .length = length}, true);
+	if (cs.length == 0 || cs.data[0] != '{' || cs.data[cs.length-1] != '}') {
 		return (fredc_obj){};
 	}
 
+	cs = str8_trim(cs, (str8){.data = (char*)"{}", .length = 2},true);
 	fredc_obj result = new_fredc_obj(0);
-	str8 cs = str8_trim(
-			(str8){.data = contents, .length = length},
-			(str8){.data = "{}", .length = 2},
-			true
-	);
 
 	int start = 0;
 	str8 vals[2];
@@ -469,7 +467,7 @@ fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
 			if (vals[0].length && vals[1].length) {
 				str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, true);
 				str8 valstr = str8_trim_space(vals[1], true);
-				fredc_val val = parse_fredc_val(valstr.data, valstr.length);
+				fredc_val val = fredc_parse_val(valstr.data, valstr.length);
 
 				fredc_push_prop(&result, key, val); 
 			}
@@ -482,7 +480,7 @@ fredc_obj fredc_parse_obj_str(char* contents, size_t length) {
 	return result;
 }
 
-bool fredc_validate_json(char* contents, size_t length) {
+bool fredc_validate_json(const char* contents, size_t length) {
 	if ( (contents == 0) || (length == 0) )  {
 		fprintf(stderr, "invalid json: empty\n");
 		return false;

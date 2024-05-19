@@ -1,6 +1,7 @@
 #ifndef STR8_H
 #define STR8_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "darr.h"
@@ -47,6 +48,9 @@ void str8_free_pool() {
 }
 
 str8 new_str8(const char* data, size_t length) {
+	if (length == 0) {
+		return (str8){};
+	}
 	int start = pool.length;
 	darr_push_arr(pool, data, length);
 	darr_push(pool, '\0');
@@ -152,11 +156,14 @@ str8 str8_trim_space(str8 s, bool inplace) {
 	}
 
 	str8 result = {};
-	if (start < end) {
+	if (start == 0 && end == s.length-1) {
+		result = inplace
+			? s 
+			: new_str8(s.data, s.length);
+	} else if (start < end) {
 		result = inplace
 			? (str8){.data = s.data+start, .length = (end-start)+1}
 			: new_str8(s.data+start, (end-start)+1);
-		result.data[result.length] = '\0';
 	}
 
 	return result;
@@ -178,7 +185,6 @@ str8 str8_trim(str8 s, str8 cutset, bool inplace) {
 		result = inplace
 			? (str8){.data = s.data+start, .length = (end-start)+1}
 			: new_str8(s.data+start, (end-start)+1);
-		result.data[result.length] = '\0';
 	}
 
 	return result;

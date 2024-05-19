@@ -32,9 +32,9 @@ str8 read_all(char* filename) {
 	fclose(fstream);
 
 	cleanup:
-		return (str8) {
+		return (str8){
 			.data = result.data,
-			.length = result.length-1
+			.length = result.length > 0 ? result.length-1 : 0,
 		};
 }
 
@@ -43,28 +43,24 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "usage: con [filename]\n");		
 		return 1;
 	}
+	str8 c = read_all(argv[1]);
+	if (c.length == 0) {
+		return 1;
+	}
 
-	str8 contents = str8_trim_space(read_all(argv[1]), true);
-	if (!fredc_validate_json(contents.data, contents.length)) {
-		fprintf(stderr, "%s\n", contents.data);
+	//str8 c2 = str8_trim_space(c, true);
+	if (!fredc_validate_json(c2.data, c2.length)) {
+		fprintf(stderr, "%s\n", c2.data);
 		return 1;
 	}
 	str8_free_pool();
 
-	fredc_obj obj = fredc_parse_obj_str(contents.data, contents.length);
-	free(contents.data);
-	const char* prop_key = "foo.bar.foo.bar";
-	const char* prop_key2 = "foo.bar.foo.bar2";
-	fredc_set_prop(&obj, prop_key, (fredc_val){.type = JSON_BOOL, .boolean = true});
-	fredc_set_prop(&obj, prop_key2, (fredc_val){.type = JSON_BOOL, .boolean = true});
+	fredc_obj obj = fredc_parse_obj_str(c2.data, c2.length);
+	free(c.data);
 
 	printf("%s\n", fredc_obj_stringify(obj));
 
-	fredc_val get_val = fredc_get_prop(&obj, prop_key);
-	printf("get \"%s\": %s\n", prop_key, fredc_val_str8ify(get_val, 0).data);
-
-	get_val = fredc_get_prop(&obj, prop_key2);
-	printf("get \"%s\": %s\n", prop_key2, fredc_val_str8ify(get_val, 0).data);
+	str8_free_pool();
 	fredc_obj_free(&obj);
 
 	return 0;

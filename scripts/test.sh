@@ -1,31 +1,13 @@
-#! /bin/bash
+#!/bin/bash
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-pushd $SCRIPT_DIR/../
+SRC_DIR=$SCRIPT_DIR/../src
+BIN_DIR=$SCRIPT_DIR/../bin
 
-if ./bin/con tests/step1/valid.json &>/dev/null; then
-	printf "success\n"
-else
-	printf "step 1 valid json test failed\n"
+if [ ! -d $BIN_DIR ]; then
+	mkdir $BIN_DIR
 fi
 
-if ./bin/con tests/step1/invalid.json &>/dev/null; then
-	printf "step 1 invalid json test failed\n"
-else
-	printf "success\n"
+if gcc $SRC_DIR/test.c -g -o $BIN_DIR/fredc_test; then
+	$BIN_DIR/fredc_test
 fi
-
-if ./bin/con tests/step2/valid.json 1>/dev/null; then
-	printf "success\n"
-else
-	printf "step 2 valid json test failed\n"
-fi
-
-
-if ./bin/con tests/step2/valid2.json 1>/dev/null; then
-	printf "success\n"
-else
-	printf "step 2 valid2 json test failed\n"
-fi
-
-popd
