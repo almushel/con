@@ -150,7 +150,7 @@ fredc_node* fredc_get_node(fredc_obj* obj, str8 key) {
 fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
 	fredc_val result = {};
 
-	str8_list keys = str8_split((str8){.data=(char*)key, .length=strlen(key)}, '.', true);
+	str8_list keys = str8_split(new_str8(key, strlen(key), true), '.', true);
 	fredc_node* node = fredc_get_node(obj, keys.data[0]);
 	if (node == 0) { goto cleanup; }
 
@@ -178,7 +178,7 @@ fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
 fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
 	fredc_val result = {};
 
-	str8_list keys = str8_split((str8){.data=(char*)key, .length=strlen(key)}, '.', true);
+	str8_list keys = str8_split(new_str8(key, strlen(key), true), '.', true);
 	fredc_node* node = fredc_get_node(obj, keys.data[0]);
 
 	if (keys.length > 1) {
@@ -219,15 +219,15 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 
 	switch (val.type) {
 		case JSON_NULL: {
-			result = new_str8("null", 4);
+			result = new_str8("null", 4, true);
 		} break;
 
 		case JSON_BOOL: {
-			result = new_str8(val.boolean ? "true" : "false", 4 + (size_t)(!val.boolean));
+			result = new_str8(val.boolean ? "true" : "false", 4 + (size_t)(!val.boolean), true);
 		} break;
 
 		case JSON_STRING: {
-			result = new_str8("", val.string.length+2);
+			result = new_str8("", val.string.length+2, false);
 			result.data[0] = '\"';
 			memcpy(result.data+1, val.string.data, val.string.length);
 			result.data[result.length-1] = '\"';
@@ -236,24 +236,24 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 		case JSON_NUM: {
 			int len = snprintf(0,0, "%f", val.number);
 			if (len) {
-				result = new_str8("", len);
+				result = new_str8("", len, false);
 				snprintf(result.data, result.length+1, "%f", val.number);
 			}
 		} break;
 
 		case JSON_OBJ: {
 			int count = 0;
-			str8 props = {.data = "{", .length = 1};
+			str8 props = new_str8("{", 1, true);
 			for (int i = 0; i < val.object.length; i++) {
 				fredc_node* node = val.object.props+i;
 				while (node) {
 					if (node->key.length) {
-						props = str8_concat(props, (str8){.data="\n", .length = 1});
+						props = str8_concat(props, new_str8("\n", 1, true));
 						props = str8_concat(
 							props,
 							fredc_node_str8ify(*node, indent+1)
 						);
-						props = str8_concat(props, (str8){.data = ",", .length = 1});
+						props = str8_concat(props, new_str8(",", 1, true));
 						count++;
 					}
 					node = node->next;
@@ -265,7 +265,7 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 				if (count > 1) {
 					props.length--; //Remove last comma
 
-					str8 bracket = new_str8("", (indent*INDENT_SIZE)+2);
+					str8 bracket = new_str8("", (indent*INDENT_SIZE)+2, false);
 					bracket.data[0] ='\n';
 					memset(bracket.data+1, ' ', indent*INDENT_SIZE);
 					bracket.data[bracket.length-1] = '}';
@@ -282,36 +282,36 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 				
 				result = str8_concat(props, bracket);
 			} else {
-				result = new_str8("{}", 2);
+				result = new_str8("{}", 2, true);
 			}
 		} break;
 
 		case JSON_LIST: {
 			if (val.list.length) {
-				result = (str8){.data = "[", .length = 1};
-				str8 indent_str = new_str8("", (indent+1)*INDENT_SIZE);
+				result = new_str8("[", 1, true);
+				str8 indent_str = new_str8("", (indent+1)*INDENT_SIZE, false);
 				memset(indent_str.data, ' ', indent_str.length);
 
 				fredc_node node = {};
 				for (int i = 0; i < val.list.length; i++) {
 					node.val = val.list.data[i];
-					result = str8_concat(result, (str8){.data="\n", .length = 1});
+					result = str8_concat(result, new_str8("\n", 1, true));
 					str8 val_str = fredc_val_str8ify(node.val, indent+1);
 					
 					result = str8_concat(result, str8_concat(indent_str, val_str));
 					if (i != (val.list.length)-1) {
-						result = str8_concat(result, (str8){.data = ",", .length = 1});
+						result = str8_concat(result, new_str8(",", 1, true));
 					}
 				}
 
-				str8 bracket = new_str8("", (indent*INDENT_SIZE)+2);
+				str8 bracket = new_str8("", (indent*INDENT_SIZE)+2, false);
 				bracket.data[0] ='\n';
 				memcpy(bracket.data+1, indent_str.data, indent*INDENT_SIZE);
 				bracket.data[bracket.length-1] = ']';
 				
 				result = str8_concat(result, bracket);
 			} else {
-				result = new_str8("[]", 2);
+				result = new_str8("[]", 2, true);
 			}
 		} break;
 
@@ -325,7 +325,7 @@ str8 fredc_node_str8ify(fredc_node prop, int indent) {
 	str8 key, valstr, result = {};
 	int key_offset = indent*INDENT_SIZE;
 
-	key = new_str8("", (key_offset) + (prop.key.length+4));
+	key = new_str8("", (key_offset) + (prop.key.length+4), false);
 	memset(key.data, ' ', key_offset);
 	key.data[key_offset] = '\"';
 	memcpy(key.data+(key_offset+1), prop.key.data, prop.key.length);
@@ -353,19 +353,25 @@ char* fredc_obj_stringify(fredc_obj o) {
 fredc_val fredc_parse_val(const char* contents, size_t length) {
 	fredc_val result = {};
 	double num_val = 0;
+
+	str8 valstr = new_str8(contents, length, false);
 	
 	if (contents[0] == '\"' && contents[length-1] == '\"') {
-		str8 val = str8_trim((str8){.data=(char*)contents, .length = length}, (str8){.data = "\"", .length = 1}, true);
+		str8 val = str8_trim(
+			new_str8((char*)contents, length, true),
+			new_str8("\"", 1, true),
+			true
+		);
 
 		result.type = JSON_STRING;
 		result.string.length = val.length;
 		result.string.data = (char*)malloc(val.length+1);
 		memcpy(result.string.data, val.data, val.length);
 		result.string.data[val.length] = '\0';
-	} else if (strcmp(contents, "true") == 0){
+	} else if ( str8_cmp(valstr, new_str8("true", 4, true)) ){
 		result.type = JSON_BOOL;
 		result.boolean = true;
-	} else if (strcmp(contents, "false") == 0 ){
+	} else if ( str8_cmp(valstr, new_str8("false", 5, true)) ){
 		result.type = JSON_BOOL;
 		result.boolean = false;
 	} else if ( (num_val = strtod(contents, 0)) ){
@@ -379,10 +385,10 @@ fredc_val fredc_parse_val(const char* contents, size_t length) {
 fredc_val_list fredc_parse_list_str(const char* contents, size_t length) {
 	fredc_list result = {};	
 
-	if ((contents[0] == '[') && (contents[length-1] == ']') && (contents[length] == '\0') ) {
+	if ((contents[0] == '[') && (contents[length-1] == ']')) {
 		str8 cs = str8_trim(
-			(str8){.data = (char*)contents, .length = length}, 
-			(str8){.data = "[]", .length = 2},
+			new_str8((char*)contents, length, true), 
+			new_str8("[]", 2, true),
 			true
 		);
 		str8_list val_strs = str8_split(cs, ',', true);
@@ -400,16 +406,16 @@ fredc_val_list fredc_parse_list_str(const char* contents, size_t length) {
 }
 
 fredc_obj fredc_parse_obj_str(const char* contents, size_t length) {
-	str8 cs = str8_trim_space((str8){.data = (char*)contents, .length = length}, true);
+	str8 cs = str8_trim_space(new_str8(contents, length, true), true);
 	if (cs.length == 0 || cs.data[0] != '{' || cs.data[cs.length-1] != '}') {
 		return (fredc_obj){};
 	}
 
-	cs = str8_trim(cs, (str8){.data = (char*)"{}", .length = 2},true);
+	cs = str8_trim(cs, new_str8("{}", 2, true), true);
 	fredc_obj result = new_fredc_obj(0);
 
 	int start = 0;
-	str8 vals[2];
+	str8* vals;
 	for (int i = 0; i < cs.length; i++) {
 		if (cs.data[i] == '{') {
 			int nesting_level = 1;
@@ -424,16 +430,23 @@ fredc_obj fredc_parse_obj_str(const char* contents, size_t length) {
 				}
 	 		}
 				
-			str8_cut((str8) {.data = cs.data+start, .length = end-start+1}, ':', vals);
-			str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, true);
-			str8 objstr = str8_trim_space(vals[1], true);
+			vals = str8_cut(new_str8(cs.data+start, end-start+1, true), ':', true);
+			if (vals) {
+				str8 key = str8_trim(
+					str8_trim_space(vals[0], true),
+					new_str8("\"", 1, true),
+					true
+				);
+				str8 objstr = str8_trim_space(vals[1], true);
 
-			fredc_val new_obj = {
-				.type = JSON_OBJ,
-				.object = fredc_parse_obj_str(objstr.data, objstr.length),
-			};
-			fredc_push_prop(&result, key, new_obj);
-			
+				fredc_val new_obj = {
+					.type = JSON_OBJ,
+					.object = fredc_parse_obj_str(objstr.data, objstr.length),
+				};
+				fredc_push_prop(&result, key, new_obj);
+
+				free(vals);
+			}
 			i = end+1;
 			start = i+1;
 		} else if (cs.data[i] == '[') {
@@ -448,28 +461,45 @@ fredc_obj fredc_parse_obj_str(const char* contents, size_t length) {
 					}
 				}
 	 		}
-				
-			str8_cut((str8) {.data = cs.data+start, .length = end-start+1}, ':', vals);
-			str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, true);
-			str8 liststr = str8_trim_space(vals[1], true);
+			
+			vals = str8_cut(new_str8(cs.data+start, end-start+1, true), ':', true);
+			if (vals) {
+				str8 key = str8_trim(
+					str8_trim_space(vals[0], true),
+					new_str8("\"", 1, true),
+					true
+				);
+				str8 liststr = str8_trim_space(vals[1], true);
 
-			fredc_val new_list = {
-				.type = JSON_LIST,
-				.list = fredc_parse_list_str(liststr.data, liststr.length)
-			};
-			fredc_push_prop(&result, key, new_list);
+				fredc_val new_list = {
+					.type = JSON_LIST,
+					.list = fredc_parse_list_str(liststr.data, liststr.length)
+				};
+				fredc_push_prop(&result, key, new_list);
+				free(vals);
+			}
 			
 			i = end+1;
 			start = i+1;
 		} else if (cs.data[i] == ',' || i == cs.length-1) {
-			str8_cut((str8){.data = cs.data+start, .length = i-start}, ':', vals);
+			vals = str8_cut(new_str8(cs.data+start, i-start+1, true), ':', true);
+			if (vals) {
+				if (vals[0].length && vals[1].length) {
+					str8 key = str8_trim(
+						str8_trim_space(vals[0], true),
+						new_str8("\",", 2, true),
+						true
+					);
+					str8 valstr = str8_trim(
+						str8_trim_space(vals[1], true),
+						new_str8(",", 1, true),
+						true
+					);
+					fredc_val val = fredc_parse_val(valstr.data, valstr.length);
 
-			if (vals[0].length && vals[1].length) {
-				str8 key = str8_trim(str8_trim_space(vals[0], true), (str8){.data = "\"", .length = 1}, true);
-				str8 valstr = str8_trim_space(vals[1], true);
-				fredc_val val = fredc_parse_val(valstr.data, valstr.length);
-
-				fredc_push_prop(&result, key, val); 
+					fredc_push_prop(&result, key, val); 
+				}
+				free(vals);
 			}
 
 			start = i+1;

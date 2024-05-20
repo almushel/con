@@ -7,8 +7,6 @@
 
 #define arr_len(arr) sizeof(arr) / sizeof(arr[0])
 
-// TODO: Correctly parse last value in object even if there is no space before the closing brace
-// fredc.h:464
 const char* json_strs[] = {
 "\n{}\n",
 
@@ -48,12 +46,14 @@ int main(void) {
 
 			printf("%s\n", fredc_obj_stringify(obj));
 
-			str8_free_pool();
 			fredc_obj_free(&obj);
 		} else {
 			printf("Validation failed:\n%s\n", json_strs[i]);
 		}
 	}
+
+	printf("str8 pool size: %lu\n", pool.length);
+	str8_free_pool();
 
 	return 0;
 }

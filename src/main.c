@@ -48,14 +48,13 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	//str8 c2 = str8_trim_space(c, true);
-	if (!fredc_validate_json(c2.data, c2.length)) {
-		fprintf(stderr, "%s\n", c2.data);
+	if (!fredc_validate_json(c.data, c.length)) {
+		fprintf(stderr, "%s\n", c.data);
 		return 1;
 	}
 	str8_free_pool();
 
-	fredc_obj obj = fredc_parse_obj_str(c2.data, c2.length);
+	fredc_obj obj = fredc_parse_obj_str(c.data, c.length);
 	free(c.data);
 
 	printf("%s\n", fredc_obj_stringify(obj));
