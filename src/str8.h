@@ -21,6 +21,7 @@ bool str8_contains(str8 s, int c);
 bool str8_cmp(str8 left, str8 right);
 
 str8 str8_concat(str8 left, str8 right);
+str8 str8_list_concat(str8_list list);
 str8_list str8_split(str8 s, int delim, bool inplace);
 str8* str8_cut(str8 s, int sep, bool inplace);
 str8 str8_trim_space(str8 s, bool inplace);
@@ -109,6 +110,26 @@ str8 str8_concat(str8 left, str8 right) {
 
 	str8 result = new_str8(left.data, left.length+right.length, false);
 	memcpy(result.data+left.length, right.data, right.length);
+
+	return result;
+}
+
+str8 str8_list_concat(str8_list list) {
+	str8 result = {};
+	size_t len = 0;
+	for (int i = 0; i < list.length; i++) {
+		len += list.data[i].length;
+	}
+	if (len) {
+		result = new_str8("", len, false);
+		size_t head = 0;
+		for (int i = 0; i < list.length; i++) {
+			if (list.data[i].length == 0) continue;
+			
+			memcpy(result.data+head, list.data[i].data, list.data[i].length);	
+			head += list.data[i].length;
+		}
+	}
 
 	return result;
 }

@@ -8,7 +8,8 @@
 #include "str8.h"
 
 enum fredc_data_types {
-	JSON_NULL = 0,
+	JSON_UNDEFINED = 0,
+	JSON_NULL,
 	JSON_NUM,
 	JSON_STRING,
 	JSON_BOOL,
@@ -227,10 +228,9 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 		} break;
 
 		case JSON_STRING: {
-			result = new_str8("", val.string.length+2, false);
-			result.data[0] = '\"';
-			memcpy(result.data+1, val.string.data, val.string.length);
-			result.data[result.length-1] = '\"';
+			str8 quote = new_str8("\"", 1, true);
+			str8 list[] = {quote, val.string, quote};
+			result = str8_list_concat((str8_list) { .data = list, .length = 3 });
 		} break;
 
 		case JSON_NUM: {
@@ -243,99 +243,98 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 
 		case JSON_OBJ: {
 			int count = 0;
-			str8 props = new_str8("{", 1, true);
+			str8_list str_list = {};
+			darr_push(str_list, new_str8("{\n", 2, true));
+
 			for (int i = 0; i < val.object.length; i++) {
 				fredc_node* node = val.object.props+i;
 				while (node) {
 					if (node->key.length) {
-						props = str8_concat(props, new_str8("\n", 1, true));
-						props = str8_concat(
-							props,
-							fredc_node_str8ify(*node, indent+1)
-						);
-						props = str8_concat(props, new_str8(",", 1, true));
+						darr_push(str_list, fredc_node_str8ify(*node, indent+1)); 
+						darr_push(str_list, new_str8(",\n", 2, true));
 						count++;
 					}
 					node = node->next;
 				}
 			}
 
-			if (props.length && count) {
-				str8 bracket;
-				if (count > 1) {
-					props.length--; //Remove last comma
+			if (count) {
+				str_list.length--; // Remove trailing comma
+				darr_push(str_list, new_str8("\n", 1, true));
 
-					str8 bracket = new_str8("", (indent*INDENT_SIZE)+2, false);
-					bracket.data[0] ='\n';
-					memset(bracket.data+1, ' ', indent*INDENT_SIZE);
-					bracket.data[bracket.length-1] = '}';
-				} else {
-					int offset = (indent+1)*INDENT_SIZE;
-					// Remove indent and trailing comma
-					props.data += offset;
-					props.data[0] = '{';
-					props.length -= offset+1;
-
-					bracket.data = " }";
-					bracket.length = 2;
-				}
+				str8 indent_str = new_str8("", (indent*INDENT_SIZE), false);
+				memset(indent_str.data, ' ', indent_str.length);
+				darr_push(str_list, indent_str);
+				darr_push(str_list, new_str8("}", 1, true));
 				
-				result = str8_concat(props, bracket);
+				result = str8_list_concat(str_list);
+				// free indent_str
 			} else {
 				result = new_str8("{}", 2, true);
 			}
+
+			free(str_list.data);
 		} break;
 
 		case JSON_LIST: {
 			if (val.list.length) {
-				result = new_str8("[", 1, true);
+				str8_list str_list = {};
+				darr_push(str_list, new_str8("[\n", 2, true));
+
 				str8 indent_str = new_str8("", (indent+1)*INDENT_SIZE, false);
 				memset(indent_str.data, ' ', indent_str.length);
 
-				fredc_node node = {};
 				for (int i = 0; i < val.list.length; i++) {
-					node.val = val.list.data[i];
-					result = str8_concat(result, new_str8("\n", 1, true));
-					str8 val_str = fredc_val_str8ify(node.val, indent+1);
+					darr_push(str_list, indent_str);
+					darr_push(str_list, fredc_val_str8ify(val.list.data[i], indent+1));
 					
-					result = str8_concat(result, str8_concat(indent_str, val_str));
 					if (i != (val.list.length)-1) {
-						result = str8_concat(result, new_str8(",", 1, true));
+						darr_push(str_list, new_str8(",\n", 2, true));
+					} else {
+						darr_push(str_list, new_str8("\n", 1, true));
 					}
 				}
 
-				str8 bracket = new_str8("", (indent*INDENT_SIZE)+2, false);
-				bracket.data[0] ='\n';
-				memcpy(bracket.data+1, indent_str.data, indent*INDENT_SIZE);
-				bracket.data[bracket.length-1] = ']';
+				darr_push(str_list, new_str8(indent_str.data, indent_str.length-INDENT_SIZE, true));
+				darr_push(str_list, new_str8("]", 1, true));
 				
-				result = str8_concat(result, bracket);
+				result = str8_list_concat(str_list);
+				free(str_list.data);
+				//free indent_str
 			} else {
 				result = new_str8("[]", 2, true);
 			}
 		} break;
 
-		default: {} break;
+		default: {
+			result = new_str8("undefined", 9, true);
+		} break;
 	}
 
 	return result;
 }
 
 str8 fredc_node_str8ify(fredc_node prop, int indent) {
-	str8 key, valstr, result = {};
-	int key_offset = indent*INDENT_SIZE;
+	str8 indent_str = new_str8("", indent*INDENT_SIZE, false);
+	memset(indent_str.data, ' ', indent_str.length);
 
-	key = new_str8("", (key_offset) + (prop.key.length+4), false);
-	memset(key.data, ' ', key_offset);
-	key.data[key_offset] = '\"';
-	memcpy(key.data+(key_offset+1), prop.key.data, prop.key.length);
-	key.data[key.length-3] = '\"';
-	key.data[key.length-2] = ':';
-	key.data[key.length-1] = ' ';
+	str8 str_list[] = {
+		indent_str,
+		new_str8("\"", 1, true),
+		prop.key,
+		new_str8("\": ", 3, true),
+		fredc_val_str8ify(prop.val, indent)
+	};
 
-	valstr = fredc_val_str8ify(prop.val, indent);
+	// TODO: Figure out why indent_str becomes garbage data for single property object
 
-	result = str8_concat(key, valstr);
+	str8 result = str8_list_concat(
+		(str8_list) {
+			.data = str_list,
+			.length = 5,
+			.capacity = 5
+		}
+	);
 
 	return result;
 }
@@ -374,6 +373,8 @@ fredc_val fredc_parse_val(const char* contents, size_t length) {
 	} else if ( str8_cmp(valstr, new_str8("false", 5, true)) ){
 		result.type = JSON_BOOL;
 		result.boolean = false;
+	} else if ( str8_cmp(valstr, new_str8("null", 4, true)) ) {
+		result.type = JSON_NULL;
 	} else if ( (num_val = strtod(contents, 0)) ){
 		result.type = JSON_NUM;
 		result.number = num_val;
@@ -542,7 +543,7 @@ void fredc_val_free(fredc_val* v) {
 		
 		default: break;
 	}
-	v->type = JSON_NULL;
+	v->type = JSON_UNDEFINED;
 }
 
 void fredc_node_free(fredc_node* n) {
