@@ -83,6 +83,7 @@ int main(void) {
 	size_t num_objects = arr_len(json_strs);
 	fredc_obj* objects = calloc(num_objects, sizeof(fredc_obj));
 	size_t len;
+
 	for (int i = 0; i < num_objects; i++) {
 		printf("Parse and stringify %i:\n", i+1);
 		len = strlen(json_strs[i]);
@@ -91,10 +92,9 @@ int main(void) {
 
 			printf("%s\n", fredc_obj_stringify(objects[i]));
 		} else {
-			printf("Validation failed for \nobj_%i\n", i+1);
+			printf("JSON validation failed for \nobj_%i\n", i+1);
 		}
 	}
-
 
 	char label[64];
 	for (int i = 0; i < num_objects; i++) {

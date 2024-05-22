@@ -236,7 +236,7 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 		case JSON_NUM: {
 			int len = snprintf(0,0, "%f", val.number);
 			if (len) {
-				result = new_str8("", len, false);
+				result = new_str8(0, len, false);
 				snprintf(result.data, result.length+1, "%f", val.number);
 			}
 		} break;
@@ -259,16 +259,18 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 			}
 
 			if (count) {
-				str_list.length--; // Remove trailing comma
-				darr_push(str_list, new_str8("\n", 1, true));
+				// Remove trailing comma
+				str_list.data[str_list.length-1] = (str8) {
+					.data = (char*)"\n",
+					.length = 1
+				};
 
-				str8 indent_str = new_str8("", (indent*INDENT_SIZE), false);
+				str8 indent_str = new_str8(0, (indent*INDENT_SIZE), false);
 				memset(indent_str.data, ' ', indent_str.length);
 				darr_push(str_list, indent_str);
 				darr_push(str_list, new_str8("}", 1, true));
 				
 				result = str8_list_concat(str_list);
-				// free indent_str
 			} else {
 				result = new_str8("{}", 2, true);
 			}
@@ -281,20 +283,20 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 				str8_list str_list = {};
 				darr_push(str_list, new_str8("[\n", 2, true));
 
-				str8 indent_str = new_str8("", (indent+1)*INDENT_SIZE, false);
+				str8 indent_str = new_str8(0, (indent+1)*INDENT_SIZE, false);
 				memset(indent_str.data, ' ', indent_str.length);
 
 				for (int i = 0; i < val.list.length; i++) {
 					darr_push(str_list, indent_str);
 					darr_push(str_list, fredc_val_str8ify(val.list.data[i], indent+1));
-					
-					if (i != (val.list.length)-1) {
-						darr_push(str_list, new_str8(",\n", 2, true));
-					} else {
-						darr_push(str_list, new_str8("\n", 1, true));
-					}
+					darr_push(str_list, new_str8(",\n", 2, true));
 				}
 
+				// Remove trailing comma
+				str_list.data[str_list.length-1] = (str8) {
+					.data = (char*)"\n",
+					.length = 1
+				};
 				darr_push(str_list, new_str8(indent_str.data, indent_str.length-INDENT_SIZE, true));
 				darr_push(str_list, new_str8("]", 1, true));
 				
@@ -315,7 +317,7 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 }
 
 str8 fredc_node_str8ify(fredc_node prop, int indent) {
-	str8 indent_str = new_str8("", indent*INDENT_SIZE, false);
+	str8 indent_str = new_str8(0, indent*INDENT_SIZE, false);
 	memset(indent_str.data, ' ', indent_str.length);
 
 	str8 str_list[] = {

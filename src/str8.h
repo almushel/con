@@ -29,23 +29,21 @@ str8 str8_trim(str8 s, str8 cutset, bool inplace);
 
 #endif
 
+#define STR8_IMPLEMENTATION
 #ifdef STR8_IMPLEMENTATION
 
 #include <ctype.h>
 
-#define POOL_MIN_SIZE 256
-
-typedef struct str8_pool {
-	char* data;
-	size_t length, capacity;
-} str8_pool;
-static struct str8_pool pool = {};
+static str8_list pool = {};
 
 void str8_free_pool() {
-	if (pool.data) {
-		free(pool.data);
-		pool = (str8_pool){};
+	if (pool.data && pool.capacity) {
+		for (int i = 0; i < pool.length; i++) {
+			free(pool.data[i].data);
+		}
 	}
+	free(pool.data);
+	pool = (str8_list){};
 }
 
 str8 new_str8(const char* data, size_t length, bool inplace) {
@@ -58,17 +56,19 @@ str8 new_str8(const char* data, size_t length, bool inplace) {
 			.length = length
 		};
 	}
-	int start = pool.length;
-	darr_push_arr(pool, data, length);
-	darr_push(pool, '\0');
 
 	str8 result = {
-		.data = pool.data+start,
-		.length = length,
+		.data = (char*)malloc(length+1),
+		.length = length
 	};
+	if (data != 0 && data[0] != '\0') {
+		memcpy(result.data, data, length);
+	}
+	result.data[result.length] = '\0';
+
+	darr_push(pool, result);
 
 	return result;
-
 }
 
 str8 str8_cpy(const str8 src) {
@@ -101,14 +101,15 @@ bool str8_cmp(str8 left, str8 right) {
 }
 
 str8 str8_concat(str8 left, str8 right) {
-	if (left.length == 0) {
+	if (left.length == 0 || left.data[0] == '\0') {
 		return new_str8(right.data, right.length, false);
 	}
-	if (right.length == 0) {
+	if (right.length == 0 || right.data[0] == '\0') {
 		return new_str8(left.data, left.length, false);
 	}
 
-	str8 result = new_str8(left.data, left.length+right.length, false);
+	str8 result = new_str8(0, left.length+right.length, false);
+	memcpy(result.data, left.data, left.length);
 	memcpy(result.data+left.length, right.data, right.length);
 
 	return result;
