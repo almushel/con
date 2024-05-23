@@ -1,12 +1,30 @@
 # FredC vs. JSON
 
-A simple JSON parser.
+A single-file C library for parsing, processing, and stringifying JSON data.
 
 ## Features
 
-- A C library (WIP) for converting JSON strings into a usable format and stringifying data stored in that format.
-- A probably not very useful testing CLI that reads .json files, converts them into the fredc format, and then stringifies and prints them back to stdout.
+- `fredc.h`
+    - Parse JSON strings into a tree of fredc objects.
+    - Modify (get, set, free, etc) existing fredc objects
+    - Convert fredc objects and properties back to nicely formatted JSON strings.
 
-## Note
+FredC vs. JSON doesn't care if you have trailing commas in your objects,
+but its stringify functions will correctly ommit trailing commas.
 
-FredC vs. JSON doesn't care if you have trailing commas in your objects.
+## Quick Start
+
+Define `FREDC_IMPLEMENTATION` and include `fredc.h` in one (**and only one**) translation unit in your project.
+
+```c
+// fredc.c
+#define FREDC_IMPLEMENTATION
+#include "fredc.h"
+```
+
+Then include `fredc.h` as a normal header file anywhere else it is used.
+
+## Contributing
+
+If you'd like to contribute, please fork the repository and open a pull request.
+
