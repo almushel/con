@@ -1,16 +1,15 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "darr.h"
-#define STR8_IMPLEMENTATION
-#define FREDC_IMPLEMENTATOIN
+#define FREDC_IMPLEMENTATION
 #include "fredc.h"
-
-darr_def(char);
 
 str8 read_all(char* filename) {
 	char buf[1024];
-	char_list result = {};
+	struct char_list {
+		char* data;
+		size_t length, capacity;
+	} result = {};
 
 	FILE* fstream = fopen(filename, "r");
 	if (!fstream) {
@@ -27,7 +26,7 @@ str8 read_all(char* filename) {
 		darr_resize(result, sizeof(result.data[0]), result.length);
 	} else {
 		free(result.data);
-		result = (char_list){};
+		result = (struct char_list){};
 	}
 	fclose(fstream);
 
@@ -40,7 +39,7 @@ str8 read_all(char* filename) {
 
 int main(int argc, char** argv) {
 	if (argc < 2) {
-		fprintf(stderr, "usage: con [filename]\n");		
+		fprintf(stderr, "usage: fredc [filename]\n");		
 		return 1;
 	}
 	str8 c = read_all(argv[1]);
@@ -52,7 +51,6 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "%s\n", c.data);
 		return 1;
 	}
-	str8_free_pool();
 
 	fredc_obj obj = fredc_parse_obj_str(c.data, c.length);
 	free(c.data);

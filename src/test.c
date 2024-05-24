@@ -1,8 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#define STR8_IMPLEMENTATION
-#define FREDC_IMPLEMENTATOIN
+#define FREDC_IMPLEMENTATION
 #include "fredc.h"
 
 #define arr_len(arr) sizeof(arr) / sizeof(arr[0])
@@ -36,7 +36,7 @@ const char* json_strs[] = {
 
 bool validate_fredc_obj(fredc_obj* obj, const char* key) {
 	str8 key_list[] = {
-		new_str8(key, strlen(key), true),
+		new_str8((char*)key, strlen(key), true),
 		new_str8(".", 1, true),
 		(str8){}
 	};

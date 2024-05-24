@@ -4,9 +4,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "darr.h"
-#include "str8.h"
-
 enum fredc_data_types {
 	JSON_UNDEFINED = 0,
 	JSON_NULL,
@@ -17,12 +14,29 @@ enum fredc_data_types {
 	JSON_LIST
 };
 
+typedef struct str8 {
+	char* data;
+	size_t length;
+} str8;
+
+typedef struct str8_list {
+	str8* data;
+	size_t length, capacity;
+} str8_list;
+
 typedef struct fredc_node fredc_node;
 typedef struct fredc_val fredc_val;
 typedef struct fredc_obj fredc_obj;
-darr_def(fredc_val);
-typedef fredc_val_list fredc_list;
-darr_def(fredc_node);
+
+typedef struct fredc_val_list {
+	fredc_val* data;
+	size_t length, capacity;
+} fredc_list;
+
+typedef struct fredc_node_list {
+	fredc_node* data;
+	size_t length, capacity;
+} fredc_node_list;
 
 struct fredc_obj {
 	fredc_node* props; // hash map
@@ -66,17 +80,199 @@ void fredc_val_free(fredc_val *v);
 void fredc_node_free(fredc_node *n);
 void fredc_obj_free(fredc_obj* o);
 
+void str8_free_pool();
+
 #endif
 
-#define FREDC_IMPLEMENTATION
 #ifdef FREDC_IMPLEMENTATION
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define FREDC_OBJ_MIN 2
+#define DARR_MIN_CAP 16
+
+#define darr_resize(arr, size, new_cap) {\
+	arr.data = realloc(arr.data, size*(new_cap > 0 ? new_cap : DARR_MIN_CAP));\
+	assert(arr.data);\
+	arr.capacity = new_cap > 0 ? new_cap : DARR_MIN_CAP;\
+	if (arr.length > arr.capacity) { arr.length = arr.capacity; }\
+};
+
+#define darr_push(arr, val) {\
+	if (arr.length >= arr.capacity) darr_resize(arr, sizeof(val), arr.capacity * 2)\
+	arr.data[arr.length] = val;\
+	arr.length++;\
+}
+
+#define darr_push_arr(arr, parr, plen) {\
+	while (arr.length+plen >= arr.capacity)\
+		darr_resize(arr, sizeof(parr[0]), arr.capacity*2);\
+	memcpy(arr.data+arr.length, parr, sizeof(parr[0])*plen);\
+	arr.length += plen;\
+}
+
+static str8_list pool = {};
+
+void str8_free_pool() {
+	if (pool.data && pool.capacity) {
+		for (int i = 0; i < pool.length; i++) {
+			free(pool.data[i].data);
+		}
+	}
+	free(pool.data);
+	pool = (str8_list){};
+}
+
+str8 new_str8(const char* data, size_t length, bool inplace) {
+	if (length == 0) {
+		return (str8){};
+	}
+	if (inplace) {
+		return (str8){
+			.data = (char*)data,
+			.length = length
+		};
+	}
+
+	str8 result = {
+		.data = (char*)malloc(length+1),
+		.length = length
+	};
+	if (data != 0 && data[0] != '\0') {
+		memcpy(result.data, data, length);
+	}
+	result.data[result.length] = '\0';
+
+	darr_push(pool, result);
+
+	return result;
+}
+
+bool str8_cmp(str8 left, str8 right) {
+	if (left.length != right.length) {
+		return false;
+	}
+
+	for (int i = 0; i < left.length; i++) {
+		if (left.data[i] != right.data[i]) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool str8_contains(str8 s, int c) {
+	for (int i = 0; i < s.length; i++) {
+		if (s.data[i] == c) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+str8* str8_cut(str8 s, int sep, bool inplace) {
+	str8* result = 0;
+
+	for (int i = 0; i < s.length; i++) {
+		if (s.data[i] == sep) {
+			result = calloc(sizeof(str8), 2);
+			result[0] = new_str8(s.data, i, inplace);
+			result[1] = new_str8(s.data+i+1, s.length-i-1, inplace);
+			break;
+		};
+	}
+
+	return result;
+}
+
+str8 str8_list_concat(str8_list list) {
+	str8 result = {};
+	size_t len = 0;
+	for (int i = 0; i < list.length; i++) {
+		len += list.data[i].length;
+	}
+	if (len) {
+		result = new_str8("", len, false);
+		size_t head = 0;
+		for (int i = 0; i < list.length; i++) {
+			if (list.data[i].length == 0) continue;
+			
+			memcpy(result.data+head, list.data[i].data, list.data[i].length);	
+			head += list.data[i].length;
+		}
+	}
+
+	return result;
+}
+
+str8_list str8_split(str8 s, int delim, bool inplace) {
+	str8_list result = {};
+
+	int start = 0, c = 0;
+	for (; c < s.length; c++) {
+		if (s.data[c] == delim) {
+			str8 substr = {.data=s.data+start, .length=c-start};
+			darr_push(result, new_str8(substr.data, substr.length, inplace));
+			start = c+1;
+		}
+	}
+
+	if (result.length == 0) {
+		darr_push(result, s);
+	} else if (start < c) {
+		str8 substr = {.data=s.data+start, .length=c-start};
+		darr_push(result, new_str8(substr.data, substr.length, inplace));
+	}
+
+	return result;
+}
+
+str8 str8_trim_space(str8 s, bool inplace) {
+	int start = 0, end = s.length-1;
+
+	while(isspace(s.data[start]) && start < end) {
+		start++;
+	}
+
+	while(isspace(s.data[end]) && end > start) {
+		end--;
+	}
+
+	str8 result = {};
+	if (start == 0 && end == s.length-1) {
+		result = new_str8(s.data, s.length, inplace);
+	} else if (start < end) {
+		result = new_str8(s.data+start, (end-start)+1, inplace);
+	}
+
+	return result;
+}
+
+str8 str8_trim(str8 s, str8 cutset, bool inplace) {
+	int start = 0, end = s.length-1;
+
+	while (str8_contains(cutset, s.data[start]) && start < end) {
+		start++;
+	}
+
+	while (str8_contains(cutset, s.data[end]) && end > start) {
+		end--;
+	}
+
+	str8 result = {};
+	if (start < end) {
+		result = new_str8(s.data+start, (end-start)+1, inplace);
+	}
+
+	return result;
+}
+
+#define FREDC_OBJ_MIN 16
 
 static size_t fredc_hash(fredc_obj* obj, str8 key) {
 	size_t result = 0;
@@ -328,8 +524,6 @@ str8 fredc_node_str8ify(fredc_node prop, int indent) {
 		fredc_val_str8ify(prop.val, indent)
 	};
 
-	// TODO: Figure out why indent_str becomes garbage data for single property object
-
 	str8 result = str8_list_concat(
 		(str8_list) {
 			.data = str_list,
@@ -385,7 +579,7 @@ fredc_val fredc_parse_val(const char* contents, size_t length) {
 	return result;
 }
 
-fredc_val_list fredc_parse_list_str(const char* contents, size_t length) {
+fredc_list fredc_parse_list_str(const char* contents, size_t length) {
 	fredc_list result = {};	
 
 	if ((contents[0] == '[') && (contents[length-1] == ']')) {
