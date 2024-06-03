@@ -84,7 +84,6 @@ void str8_free_pool();
 
 #endif
 
-#define FREDC_IMPLEMENTATION
 #ifdef FREDC_IMPLEMENTATION
 
 #include <assert.h>
@@ -343,10 +342,36 @@ fredc_node* fredc_get_node(fredc_obj* obj, str8 key) {
 	return node;
 }
 
-// obj: target object
-// key: string describing the location of the property in dot notation (e.g. [obj.]"foo.bar") 
-// returns: val on success or undefined fredc_val on failure
 fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
+	fredc_val result = {};
+
+	fredc_node* node = fredc_get_node(obj, new_str8(key, strlen(key), true));
+	if (node) {
+		result = node->val;
+	}
+
+	return result;
+}
+
+fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
+	fredc_val result = {};
+	str8 key8 = new_str8(key, strlen(key), true);
+
+	fredc_push_prop(obj, key8, val);
+	fredc_node* node = fredc_get_node(obj, key8);
+	if (node) {
+		result = node->val;
+	}
+
+	return result;
+}
+
+// Recursive get_prop using key interpreted as JavaScript notation.
+// Currently only supports dot notation (e.g. obj.foo.bar)
+// obj: target object
+// key: string describing the location of the property relative to obj
+// returns: val on success or undefined fredc_val on failure
+fredc_val fredc_get_prop_js(fredc_obj* obj, const char* key) {
 	fredc_val result = {};
 
 	str8_list keys = str8_split(new_str8(key, strlen(key), true), '.', true);
@@ -355,7 +380,7 @@ fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
 
 	if (keys.length > 1) {
 		if (node->val.type == JSON_OBJ) {
-			result = fredc_get_prop(&node->val.object, keys.data[1].data);
+			result = fredc_get_prop_js(&node->val.object, keys.data[1].data);
 		} else {
 			result = (fredc_val){};
 		}
@@ -368,13 +393,13 @@ fredc_val fredc_get_prop(fredc_obj* obj, const char* key) {
 		return result;
 }
 
+// Recursive set_prop using key interpreted as JavaScript notation.
+// Currently only supports dot notation (e.g. obj.foo.bar)
 // obj: target object
-// key: string describing the location of the property in dot notation (e.g. [obj.]"foo.bar") 
-// val: the fred_c val to be set
+// key: string describing the location of the property relative to obj
 // returns: val on success or undefined fredc_val on failure
-//
 // Will replace only the last key and fail on any preceding key that is not an object.
-fredc_val fredc_set_prop(fredc_obj* obj, const char* key, fredc_val val) {
+fredc_val fredc_set_prop_js(fredc_obj* obj, const char* key, fredc_val val) {
 	fredc_val result = {};
 
 	str8_list keys = str8_split(new_str8(key, strlen(key), true), '.', true);
