@@ -84,6 +84,7 @@ void str8_free_pool();
 
 #endif
 
+#define FREDC_IMPLEMENTATION
 #ifdef FREDC_IMPLEMENTATION
 
 #include <assert.h>
@@ -92,27 +93,28 @@ void str8_free_pool();
 #include <stdlib.h>
 #include <string.h>
 
-#define DARR_MIN_CAP 16
-
-#define darr_resize(arr, size, new_cap) {\
-	arr.data = realloc(arr.data, size*(new_cap > 0 ? new_cap : DARR_MIN_CAP));\
+#define FREDC_DARR_MIN_CAP 16
+#define fredc_darr_resize(arr, type, new_cap) {\
+	arr.data = (type*)realloc(arr.data, sizeof(type)*(new_cap > 0 ? new_cap : FREDC_DARR_MIN_CAP));\
 	assert(arr.data);\
-	arr.capacity = new_cap > 0 ? new_cap : DARR_MIN_CAP;\
+	arr.capacity = new_cap > 0 ? new_cap : FREDC_DARR_MIN_CAP;\
 	if (arr.length > arr.capacity) { arr.length = arr.capacity; }\
-};
+}
 
-#define darr_push(arr, val) {\
-	if (arr.length >= arr.capacity) darr_resize(arr, sizeof(val), arr.capacity * 2)\
+#define fredc_darr_push(arr, type, val) {\
+	if (arr.length >= arr.capacity) fredc_darr_resize(arr, type, arr.capacity * 2)\
 	arr.data[arr.length] = val;\
 	arr.length++;\
 }
 
-#define darr_push_arr(arr, parr, plen) {\
+#define fredc_darr_push_arr(arr, type, parr, plen) {\
 	while (arr.length+plen >= arr.capacity)\
-		darr_resize(arr, sizeof(parr[0]), arr.capacity*2);\
-	memcpy(arr.data+arr.length, parr, sizeof(parr[0])*plen);\
+		fredc_darr_resize(arr, type, arr.capacity*2);\
+	memcpy(arr.data+arr.length, parr, sizeof(type)*plen);\
 	arr.length += plen;\
 }
+
+#define fredc_darr_push_darr(arr, type, parr) fredc_darr_push_arr(arr, type, parr.data, parr.length)
 
 static str8_list pool = {};
 
@@ -146,7 +148,7 @@ str8 new_str8(const char* data, size_t length, bool inplace) {
 	}
 	result.data[result.length] = '\0';
 
-	darr_push(pool, result);
+	fredc_darr_push(pool, str8, result);
 
 	return result;
 }
@@ -180,7 +182,7 @@ str8* str8_cut(str8 s, int sep, bool inplace) {
 
 	for (int i = 0; i < s.length; i++) {
 		if (s.data[i] == sep) {
-			result = calloc(sizeof(str8), 2);
+			result = (str8*)calloc(sizeof(str8), 2);
 			result[0] = new_str8(s.data, i, inplace);
 			result[1] = new_str8(s.data+i+1, s.length-i-1, inplace);
 			break;
@@ -217,16 +219,16 @@ str8_list str8_split(str8 s, int delim, bool inplace) {
 	for (; c < s.length; c++) {
 		if (s.data[c] == delim) {
 			str8 substr = {.data=s.data+start, .length=c-start};
-			darr_push(result, new_str8(substr.data, substr.length, inplace));
+			fredc_darr_push(result, str8, new_str8(substr.data, substr.length, inplace));
 			start = c+1;
 		}
 	}
 
 	if (result.length == 0) {
-		darr_push(result, s);
+		fredc_darr_push(result, str8, s);
 	} else if (start < c) {
 		str8 substr = {.data=s.data+start, .length=c-start};
-		darr_push(result, new_str8(substr.data, substr.length, inplace));
+		fredc_darr_push(result, str8, new_str8(substr.data, substr.length, inplace));
 	}
 
 	return result;
@@ -320,7 +322,7 @@ void fredc_push_prop(fredc_obj* obj, str8 key, fredc_val prop) {
 		}
 
 		fredc_node node = {.key = key2, .val = prop};
-		darr_push(obj->pool, node);
+		fredc_darr_push(obj->pool, fredc_node, node);
 		dest->next = obj->pool.data + (obj->pool.length-1);
 	}
 }
@@ -440,14 +442,14 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 		case JSON_OBJ: {
 			int count = 0;
 			str8_list str_list = {};
-			darr_push(str_list, new_str8("{\n", 2, true));
+			fredc_darr_push(str_list, str8, new_str8("{\n", 2, true));
 
 			for (int i = 0; i < val.object.length; i++) {
 				fredc_node* node = val.object.props+i;
 				while (node) {
 					if (node->key.length) {
-						darr_push(str_list, fredc_node_str8ify(*node, indent+1)); 
-						darr_push(str_list, new_str8(",\n", 2, true));
+						fredc_darr_push(str_list, str8, fredc_node_str8ify(*node, indent+1)); 
+						fredc_darr_push(str_list, str8, new_str8(",\n", 2, true));
 						count++;
 					}
 					node = node->next;
@@ -463,8 +465,8 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 
 				str8 indent_str = new_str8(0, (indent*INDENT_SIZE), false);
 				memset(indent_str.data, ' ', indent_str.length);
-				darr_push(str_list, indent_str);
-				darr_push(str_list, new_str8("}", 1, true));
+				fredc_darr_push(str_list, str8, indent_str);
+				fredc_darr_push(str_list, str8, new_str8("}", 1, true));
 				
 				result = str8_list_concat(str_list);
 			} else {
@@ -477,15 +479,15 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 		case JSON_LIST: {
 			if (val.list.length) {
 				str8_list str_list = {};
-				darr_push(str_list, new_str8("[\n", 2, true));
+				fredc_darr_push(str_list, str8, new_str8("[\n", 2, true));
 
 				str8 indent_str = new_str8(0, (indent+1)*INDENT_SIZE, false);
 				memset(indent_str.data, ' ', indent_str.length);
 
 				for (int i = 0; i < val.list.length; i++) {
-					darr_push(str_list, indent_str);
-					darr_push(str_list, fredc_val_str8ify(val.list.data[i], indent+1));
-					darr_push(str_list, new_str8(",\n", 2, true));
+					fredc_darr_push(str_list, str8, indent_str);
+					fredc_darr_push(str_list, str8, fredc_val_str8ify(val.list.data[i], indent+1));
+					fredc_darr_push(str_list, str8, new_str8(",\n", 2, true));
 				}
 
 				// Remove trailing comma
@@ -493,8 +495,8 @@ str8 fredc_val_str8ify(fredc_val val, int indent) {
 					.data = (char*)"\n",
 					.length = 1
 				};
-				darr_push(str_list, new_str8(indent_str.data, indent_str.length-INDENT_SIZE, true));
-				darr_push(str_list, new_str8("]", 1, true));
+				fredc_darr_push(str_list, str8, new_str8(indent_str.data, indent_str.length-INDENT_SIZE, true));
+				fredc_darr_push(str_list, str8, new_str8("]", 1, true));
 				
 				result = str8_list_concat(str_list);
 				free(str_list.data);
@@ -594,7 +596,7 @@ fredc_list fredc_parse_list_str(const char* contents, size_t length) {
 			if (val_strs.data[i].length) {
 				val_strs.data[i] = str8_trim_space(val_strs.data[i], true);	
 				fredc_val item = fredc_parse_val(val_strs.data[i].data, val_strs.data[i].length);
-				darr_push(result, item);
+				fredc_darr_push(result, fredc_val, item);
 			}
 		}
 	}
